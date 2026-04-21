@@ -76,6 +76,19 @@ create table if not exists settings (
   updated_at timestamptz default now()
 );
 
+-- ── Credit Cards ───────────────────────────────────────────────
+create table if not exists credit_cards (
+  id         text primary key,
+  name       text not null,
+  limit      numeric(14, 2) not null default 0,
+  person     text not null check (person in ('Leonardo', 'Serena', 'Casal')),
+  color      text default '#6D28D9',
+  created_at timestamptz default now()
+);
+alter table credit_cards enable row level security;
+create policy "auth_all" on credit_cards
+  for all to authenticated using (true) with check (true);
+
 -- ── Row Level Security ─────────────────────────────────────────
 -- Enable RLS on all tables
 alter table transactions   enable row level security;
@@ -112,3 +125,4 @@ alter publication supabase_realtime add table fixed_expenses;
 alter publication supabase_realtime add table investments;
 alter publication supabase_realtime add table savings_jars;
 alter publication supabase_realtime add table documents;
+alter publication supabase_realtime add table credit_cards;

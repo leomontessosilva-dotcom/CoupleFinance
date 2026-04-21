@@ -3,12 +3,13 @@ import {
   AreaChart, Area, XAxis, YAxis, Tooltip,
   ResponsiveContainer, CartesianGrid,
 } from 'recharts';
-import { ArrowUpRight, ArrowDownRight, TrendingUp, CreditCard, Pencil, Check, X } from 'lucide-react';
+import { ArrowUpRight, ArrowDownRight, TrendingUp, CreditCard, Plus } from 'lucide-react';
 import { useStore } from '../store/useStore';
 import {
   formatCurrency, formatShortDate, isInMonth,
-  categoryColors, formatMonthShort, prevMonth,
+  categoryColors, formatMonthShort, prevMonth, generateId,
 } from '../utils/format';
+import type { Person } from '../types';
 
 /* ── Premium Tooltip ─────────────────────────────────── */
 const ChartTooltip = ({ active, payload, label }: any) => {
@@ -42,9 +43,9 @@ const ChartTooltip = ({ active, payload, label }: any) => {
 
 /* ── Main Dashboard ──────────────────────────────────── */
 export default function Dashboard() {
-  const { transactions, fixedExpenses, investments, savingsJars, currentMonth, creditCardLimit, setCreditCardLimit } = useStore();
-  const [editingLimit, setEditingLimit] = useState(false);
-  const [limitDraft, setLimitDraft] = useState('');
+  const { transactions, fixedExpenses, investments, savingsJars, currentMonth, creditCards, addCreditCard } = useStore();
+  const [showCCModal, setShowCCModal] = useState(false);
+  const [ccForm, setCcForm] = useState({ name: '', limit: '', person: 'Casal', color: '#6D28D9' });
 
   /* Compute month-level aggregates */
   const m = useMemo(() => {
@@ -166,7 +167,7 @@ export default function Dashboard() {
         </div>
 
         {/* Stat chips row */}
-        <div style={{ display: 'flex', marginTop: 24, borderTop: '1px solid var(--border)' }}>
+        <div className="stat-chips-row" style={{ display: 'flex', marginTop: 24, borderTop: '1px solid var(--border)' }}>
           {[
             { label: 'Receitas do Mês', value: formatCurrency(m.income), up: true, color: 'var(--green)' },
             { label: 'Despesas do Mês', value: formatCurrency(m.expenses), up: false, color: 'var(--red)' },
@@ -195,8 +196,72 @@ export default function Dashboard() {
         </div>
       </div>
 
+      {/* ── CC Cards Widget ───────────────────────────────────────────── */}
+      <div className="surface animate-in-1" style={{ padding: '20px 24px' }}>
+        <div className="sec-hdr">
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <div style={{ width: 32, height: 32, borderRadius: 8, background: 'var(--accent-bg)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <CreditCard size={15} color="var(--accent)" />
+            </div>
+            <p className="section-title">Cartões de Crédito</p>
+          </div>
+          <button className="btn-secondary btn-sm" onClick={() => setShowCCModal(true)}>
+            <Plus size={13} /> Adicionar
+          </button>
+        </div>
+
+        {creditCards.length === 0 ? (
+          <div style={{ textAlign: 'center', padding: '20px 0' }}>
+            <p style={{ fontSize: 12, color: 'var(--text-3)', marginBottom: 10 }}>Nenhum cartão cadastrado</p>
+            <button className="btn-secondary btn-sm" onClick={() => setShowCCModal(true)}>
+              <Plus size={13} /> Adicionar cartão
+            </button>
+          </div>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+            {creditCards.map((card) => {
+              const spending = m.ccSpending;
+              const pct = card.limit > 0 ? Math.min(100, (spending / card.limit) * 100) : 0;
+              const isOver = card.limit > 0 && spending > card.limit;
+              const barColor = isOver ? 'var(--red)' : pct > 80 ? 'var(--amber)' : card.color;
+              return (
+                <div key={card.id}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <div style={{ width: 8, height: 8, borderRadius: '50%', background: card.color }} />
+                      <div>
+                        <p style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--text-1)' }}>{card.name}</p>
+                        <p style={{ fontSize: 10.5, color: 'var(--text-3)' }}>{card.person}</p>
+                      </div>
+                    </div>
+                    <div style={{ textAlign: 'right' }}>
+                      <span style={{ fontFamily: 'Fraunces, serif', fontSize: 14, color: isOver ? 'var(--red)' : 'var(--text-1)' }}>
+                        {formatCurrency(spending)}
+                      </span>
+                      {card.limit > 0 && (
+                        <p style={{ fontSize: 10, color: 'var(--text-3)' }}>/ {formatCurrency(card.limit)}</p>
+                      )}
+                    </div>
+                  </div>
+                  {card.limit > 0 && (
+                    <div className="pbar pbar-lg">
+                      <div className="pbar-fill" style={{ width: `${pct}%`, background: barColor }} />
+                    </div>
+                  )}
+                  {isOver && (
+                    <p style={{ fontSize: 10.5, color: 'var(--red)', marginTop: 4 }}>
+                      Limite excedido em {formatCurrency(spending - card.limit)}
+                    </p>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
       {/* ── ZONE 2: Featured Chart + Bills ──────────────────────────────── */}
-      <div className="animate-in-1" style={{ display: 'grid', gridTemplateColumns: '1fr 300px', gap: 20 }}>
+      <div className="animate-in-1 zone-grid-2" style={{ display: 'grid', gridTemplateColumns: '1fr 300px', gap: 20 }}>
 
         {/* The main chart */}
         <div className="surface" style={{ padding: '24px 24px 16px', position: 'relative' }}>
@@ -343,97 +408,8 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {/* ── CC Spending Widget ───────────────────────────────────────────── */}
-      {(() => {
-        const pct = creditCardLimit > 0 ? Math.min(100, (m.ccSpending / creditCardLimit) * 100) : 0;
-        const isOver = creditCardLimit > 0 && m.ccSpending > creditCardLimit;
-        const barColor = isOver ? 'var(--red)' : pct > 80 ? 'var(--amber)' : 'var(--accent)';
-
-        return (
-          <div className="surface animate-in-1" style={{ padding: '20px 24px' }}>
-            <div className="sec-hdr" style={{ marginBottom: creditCardLimit > 0 ? 16 : 0 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                <div style={{ width: 32, height: 32, borderRadius: 8, background: 'var(--accent-bg)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  <CreditCard size={15} color="var(--accent)" />
-                </div>
-                <div>
-                  <p className="section-title">Cartão de Crédito</p>
-                  {isOver && (
-                    <p style={{ fontSize: 10.5, color: 'var(--red)', fontWeight: 600, marginTop: 1 }}>
-                      Limite excedido em {formatCurrency(m.ccSpending - creditCardLimit)}
-                    </p>
-                  )}
-                </div>
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <span style={{ fontFamily: 'Fraunces, serif', fontSize: 18, fontWeight: 400, color: isOver ? 'var(--red)' : 'var(--text-1)', letterSpacing: '-0.02em' }}>
-                  {formatCurrency(m.ccSpending)}
-                </span>
-                {creditCardLimit > 0 && (
-                  <span style={{ fontSize: 11, color: 'var(--text-3)' }}>
-                    / {formatCurrency(creditCardLimit)}
-                  </span>
-                )}
-                {!editingLimit && (
-                  <button
-                    onClick={() => { setEditingLimit(true); setLimitDraft(String(creditCardLimit || '')); }}
-                    style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-3)', padding: 4, display: 'flex', alignItems: 'center' }}
-                    title="Definir limite"
-                  >
-                    <Pencil size={12} />
-                  </button>
-                )}
-              </div>
-            </div>
-
-            {editingLimit && (
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14 }}>
-                <span style={{ fontSize: 12, color: 'var(--text-2)' }}>Limite:</span>
-                <input
-                  type="number"
-                  className="input"
-                  style={{ maxWidth: 140, padding: '6px 10px', fontSize: 13 }}
-                  placeholder="R$ 0"
-                  value={limitDraft}
-                  onChange={(e) => setLimitDraft(e.target.value)}
-                  autoFocus
-                />
-                <button onClick={() => { setCreditCardLimit(Number(limitDraft) || 0); setEditingLimit(false); }}
-                  style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--green)', padding: 4 }}>
-                  <Check size={14} />
-                </button>
-                <button onClick={() => setEditingLimit(false)}
-                  style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-3)', padding: 4 }}>
-                  <X size={14} />
-                </button>
-              </div>
-            )}
-
-            {creditCardLimit > 0 && (
-              <>
-                <div className="pbar pbar-lg" style={{ marginBottom: 6 }}>
-                  <div className="pbar-fill" style={{ width: `${pct}%`, background: barColor, transition: 'width 600ms ease' }} />
-                </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                  <span style={{ fontSize: 10.5, color: 'var(--text-3)' }}>{pct.toFixed(0)}% utilizado</span>
-                  <span style={{ fontSize: 10.5, color: 'var(--text-3)', fontFamily: 'Fraunces, serif' }}>
-                    {formatCurrency(Math.max(0, creditCardLimit - m.ccSpending))} disponível
-                  </span>
-                </div>
-              </>
-            )}
-
-            {creditCardLimit === 0 && !editingLimit && (
-              <p style={{ fontSize: 12, color: 'var(--text-3)', marginTop: 8 }}>
-                Gasto no crédito este mês. <button onClick={() => { setEditingLimit(true); setLimitDraft(''); }} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--accent)', fontSize: 12, fontWeight: 600, padding: 0 }}>Definir limite →</button>
-              </p>
-            )}
-          </div>
-        );
-      })()}
-
       {/* ── ZONE 3: Transactions + Cofrinhos ────────────────────────────── */}
-      <div className="animate-in-2" style={{ display: 'grid', gridTemplateColumns: '1fr 380px', gap: 20 }}>
+      <div className="animate-in-2 zone-grid-2" style={{ display: 'grid', gridTemplateColumns: '1fr 380px', gap: 20 }}>
 
         {/* Recent transactions */}
         <div className="surface" style={{ overflow: 'hidden' }}>
@@ -575,6 +551,64 @@ export default function Dashboard() {
           </div>
         </div>
       </div>
+
+      {/* Add CC Modal */}
+      {showCCModal && (
+        <div className="modal-overlay" onClick={() => setShowCCModal(false)}>
+          <div className="modal-panel" onClick={e => e.stopPropagation()}>
+            <h3 style={{ fontFamily: 'Fraunces, serif', fontSize: '1.2rem', fontWeight: 300, marginBottom: 20, color: 'var(--text-1)' }}>
+              Novo Cartão de Crédito
+            </h3>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+              <div>
+                <label className="f-label">Nome do cartão</label>
+                <input className="input" placeholder="Ex: Nubank Leo" value={ccForm.name}
+                  onChange={e => setCcForm({...ccForm, name: e.target.value})} />
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                <div>
+                  <label className="f-label">Limite (R$)</label>
+                  <input type="number" className="input" placeholder="0,00" value={ccForm.limit}
+                    onChange={e => setCcForm({...ccForm, limit: e.target.value})} />
+                </div>
+                <div>
+                  <label className="f-label">Responsável</label>
+                  <select className="input" value={ccForm.person}
+                    onChange={e => setCcForm({...ccForm, person: e.target.value})}>
+                    <option>Leonardo</option>
+                    <option>Serena</option>
+                    <option>Casal</option>
+                  </select>
+                </div>
+              </div>
+              <div>
+                <label className="f-label">Cor</label>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  {['#6D28D9', '#D5197A', '#047857', '#B45309', '#1D4ED8', '#DC2626'].map(c => (
+                    <div key={c} onClick={() => setCcForm({...ccForm, color: c})}
+                      style={{ width: 24, height: 24, borderRadius: '50%', background: c, cursor: 'pointer',
+                        boxShadow: ccForm.color === c ? `0 0 0 2px white, 0 0 0 4px ${c}` : 'none' }} />
+                  ))}
+                </div>
+              </div>
+              <div style={{ display: 'flex', gap: 8, paddingTop: 4 }}>
+                <button className="btn-primary" style={{ flex: 1, justifyContent: 'center' }}
+                  onClick={() => {
+                    if (!ccForm.name) return;
+                    addCreditCard({ id: generateId(), name: ccForm.name, limit: Number(ccForm.limit) || 0, person: ccForm.person as Person, color: ccForm.color });
+                    setShowCCModal(false);
+                    setCcForm({ name: '', limit: '', person: 'Casal', color: '#6D28D9' });
+                  }}>
+                  Salvar
+                </button>
+                <button className="btn-secondary" style={{ flex: 1, justifyContent: 'center' }} onClick={() => setShowCCModal(false)}>
+                  Cancelar
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
     </div>
   );

@@ -59,6 +59,14 @@ export interface SavingsJar {
   description?: string;
 }
 
+export interface CreditCard {
+  id: string;
+  name: string;       // "Nubank Leo", "Itaú Casal"
+  limit: number;
+  person: Person;
+  color: string;      // hex color
+}
+
 export type DocumentType = 'Holerite' | 'Nota Fiscal' | 'Comprovante' | 'Contrato' | 'Outro';
 
 export interface UploadedDocument {

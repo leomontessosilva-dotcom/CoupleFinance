@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import type { Transaction, FixedExpense, Investment, SavingsJar, UploadedDocument } from '../types';
-import { mockTransactions, mockFixedExpenses, mockInvestments, mockSavingsJars, mockDocuments } from '../data/mockData';
-import { txDB, fxDB, invDB, jarDB, docDB, seedAll, settingsDB } from '../lib/db';
+import type { CreditCard } from '../types';
+import { txDB, fxDB, invDB, jarDB, docDB, creditCardDB } from '../lib/db';
 
 interface AppState {
   // Data
@@ -10,13 +10,13 @@ interface AppState {
   investments: Investment[];
   savingsJars: SavingsJar[];
   documents: UploadedDocument[];
+  creditCards: CreditCard[];
 
   // UI state
   currentMonth: string;
   activePage: string;
   isLoading: boolean;
   dbError: string | null;
-  creditCardLimit: number;
 
   // Init
   initData: () => Promise<void>;
@@ -24,7 +24,6 @@ interface AppState {
   // UI actions
   setActivePage: (page: string) => void;
   setCurrentMonth: (month: string) => void;
-  setCreditCardLimit: (limit: number) => void;
 
   // Transactions
   addTransaction: (t: Transaction) => void;
@@ -49,6 +48,11 @@ interface AppState {
   // Documents
   addDocument: (d: UploadedDocument) => void;
   deleteDocument: (id: string) => void;
+
+  // Credit Cards
+  addCreditCard: (c: CreditCard) => void;
+  updateCreditCard: (c: CreditCard) => void;
+  deleteCreditCard: (id: string) => void;
 }
 
 export const useStore = create<AppState>()((set, get) => ({
@@ -57,24 +61,24 @@ export const useStore = create<AppState>()((set, get) => ({
   investments:   [],
   savingsJars:   [],
   documents:     [],
+  creditCards:   [],
   currentMonth:     '2026-04',
   activePage:       'dashboard',
   isLoading:        true,
   dbError:          null,
-  creditCardLimit:  0,
 
-  // ─── Init: load from Supabase, seed if empty ───────────────
+  // ─── Init: load from Supabase ──────────────────────────────
   initData: async () => {
     set({ isLoading: true, dbError: null });
     try {
-      const [tx, fx, inv, jars, docs, ccLimit] = await Promise.all([
+      const [tx, fx, inv, jars, docs, cc] = await Promise.all([
         txDB.getAll(), fxDB.getAll(), invDB.getAll(),
         jarDB.getAll(), docDB.getAll(),
-        settingsDB.get('credit_card_limit'),
+        creditCardDB.getAll(),
       ]);
 
-      // Load CC limit (non-fatal if missing)
-      if (ccLimit) set({ creditCardLimit: Number(ccLimit) });
+      // Load credit cards (non-fatal if missing)
+      if (!cc.error) set({ creditCards: cc.data });
 
       // Check if any table errored (likely tables don't exist yet)
       const firstError = [tx, fx, inv, jars, docs].find((r) => r.error);
@@ -82,12 +86,11 @@ export const useStore = create<AppState>()((set, get) => ({
         set({
           isLoading: false,
           dbError: 'tables_missing',
-          // Fall back to mock data so UI is still usable
-          transactions: mockTransactions,
-          fixedExpenses: mockFixedExpenses,
-          investments: mockInvestments,
-          savingsJars: mockSavingsJars,
-          documents: mockDocuments,
+          transactions: [],
+          fixedExpenses: [],
+          investments: [],
+          savingsJars: [],
+          documents: [],
         });
         return;
       }
@@ -99,18 +102,9 @@ export const useStore = create<AppState>()((set, get) => ({
         jars.data.length === 0;
 
       if (isEmpty) {
-        // First time: seed with demo data
-        await seedAll(
-          mockTransactions, mockFixedExpenses,
-          mockInvestments, mockSavingsJars, mockDocuments,
-        );
         set({
-          transactions: mockTransactions,
-          fixedExpenses: mockFixedExpenses,
-          investments: mockInvestments,
-          savingsJars: mockSavingsJars,
-          documents: mockDocuments,
-          isLoading: false,
+          transactions: [], fixedExpenses: [], investments: [],
+          savingsJars: [], documents: [], isLoading: false,
         });
       } else {
         set({
@@ -130,10 +124,6 @@ export const useStore = create<AppState>()((set, get) => ({
   // ─── UI ────────────────────────────────────────────────────
   setActivePage:    (page)  => set({ activePage: page }),
   setCurrentMonth:  (month) => set({ currentMonth: month }),
-  setCreditCardLimit: (limit) => {
-    set({ creditCardLimit: limit });
-    settingsDB.set('credit_card_limit', String(limit));
-  },
 
   // ─── Transactions ──────────────────────────────────────────
   addTransaction: (t) => {
@@ -207,5 +197,19 @@ export const useStore = create<AppState>()((set, get) => ({
   deleteDocument: (id) => {
     set((s) => ({ documents: s.documents.filter((x) => x.id !== id) }));
     docDB.delete(id);
+  },
+
+  // ─── Credit Cards ──────────────────────────────────────────
+  addCreditCard: (c) => {
+    set((s) => ({ creditCards: [...s.creditCards, c] }));
+    creditCardDB.insert(c);
+  },
+  updateCreditCard: (c) => {
+    set((s) => ({ creditCards: s.creditCards.map((x) => (x.id === c.id ? c : x)) }));
+    creditCardDB.update(c);
+  },
+  deleteCreditCard: (id) => {
+    set((s) => ({ creditCards: s.creditCards.filter((x) => x.id !== id) }));
+    creditCardDB.delete(id);
   },
 }));

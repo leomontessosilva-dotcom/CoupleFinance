@@ -6,7 +6,7 @@
 import { supabase } from './supabase';
 import type {
   Transaction, FixedExpense, Investment,
-  SavingsJar, UploadedDocument,
+  SavingsJar, UploadedDocument, CreditCard,
 } from '../types';
 
 // ── Mappers ──────────────────────────────────────────────────
@@ -86,6 +86,13 @@ const docFromDb = (r: any): UploadedDocument => ({
   fileSize: r.file_size ?? undefined,
 });
 
+const ccToDb = (c: CreditCard) => ({
+  id: c.id, name: c.name, limit: c.limit, person: c.person, color: c.color,
+});
+const ccFromDb = (r: any): CreditCard => ({
+  id: r.id, name: r.name, limit: Number(r.limit), person: r.person, color: r.color,
+});
+
 // ── Transactions ──────────────────────────────────────────────
 
 export const txDB = {
@@ -160,32 +167,14 @@ export const docDB = {
     supabase.from('documents').delete().eq('id', id),
 };
 
-// ── Settings ──────────────────────────────────────────────────
+// ── Credit Cards ──────────────────────────────────────────────
 
-export const settingsDB = {
-  get: async (key: string): Promise<string | null> => {
-    const { data } = await supabase
-      .from('settings').select('value').eq('key', key).single();
-    return data?.value ?? null;
+export const creditCardDB = {
+  getAll: async () => {
+    const { data, error } = await supabase.from('credit_cards').select('*').order('created_at');
+    return { data: data?.map(ccFromDb) ?? [], error };
   },
-  set: (key: string, value: string) =>
-    supabase.from('settings').upsert({ key, value, updated_at: new Date().toISOString() }),
-};
-
-// ── Bulk seed (first-time setup) ─────────────────────────────
-
-export const seedAll = async (
-  transactions: Transaction[],
-  fixedExpenses: FixedExpense[],
-  investments: Investment[],
-  savingsJars: SavingsJar[],
-  documents: UploadedDocument[],
-) => {
-  await Promise.all([
-    supabase.from('transactions').insert(transactions.map(txToDb)),
-    supabase.from('fixed_expenses').insert(fixedExpenses.map(fxToDb)),
-    supabase.from('investments').insert(investments.map(invToDb)),
-    supabase.from('savings_jars').insert(savingsJars.map(jarToDb)),
-    supabase.from('documents').insert(documents.map(docToDb)),
-  ]);
+  insert: (c: CreditCard) => supabase.from('credit_cards').insert(ccToDb(c)),
+  update: (c: CreditCard) => supabase.from('credit_cards').update(ccToDb(c)).eq('id', c.id),
+  delete: (id: string) => supabase.from('credit_cards').delete().eq('id', id),
 };

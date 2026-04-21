@@ -170,6 +170,7 @@ export default function Transactions() {
 
       {/* Table */}
       <div className="card overflow-hidden">
+        <div style={{ overflowX: 'auto' }}>
         <table className="w-full">
           <thead>
             <tr className="border-b border-gray-50">
@@ -235,6 +236,7 @@ export default function Transactions() {
             ))}
           </tbody>
         </table>
+        </div>
       </div>
 
       {/* Add modal */}
