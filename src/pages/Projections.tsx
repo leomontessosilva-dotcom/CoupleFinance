@@ -1,335 +1,294 @@
 import { useState, useMemo } from 'react';
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip,
-  ResponsiveContainer, Legend
+  ResponsiveContainer, Legend,
 } from 'recharts';
 import { useStore } from '../store/useStore';
-import { formatCurrency, isInMonth, prevMonth } from '../utils/format';
+import { formatCurrency } from '../utils/format';
+import type { SavingsJar } from '../types';
 
-type Horizon = 6 | 12 | 24;
-type Scenario = 'pessimistic' | 'realistic' | 'optimistic';
+/* ── Helpers ──────────────────────────────────────────────── */
 
-const scenarioMultipliers: Record<Scenario, { income: number; expense: number }> = {
-  pessimistic: { income: 0.95, expense: 1.1 },
-  realistic: { income: 1.0, expense: 1.0 },
-  optimistic: { income: 1.1, expense: 0.9 },
-};
+/** Normalize any yield rate to a monthly decimal rate */
+function toMonthlyRate(rate: number, period: string): number {
+  const r = rate / 100;
+  if (period === 'diário')  return Math.pow(1 + r, 30) - 1;
+  if (period === 'anual')   return Math.pow(1 + r, 1 / 12) - 1;
+  return r; // mensal
+}
 
-const scenarioLabels: Record<Scenario, string> = {
-  pessimistic: 'Pessimista',
-  realistic: 'Realista',
-  optimistic: 'Otimista',
-};
-
-const CustomTooltip = ({ active, payload, label }: any) => {
-  if (active && payload && payload.length) {
-    return (
-      <div className="bg-white rounded-xl shadow-card border border-gray-100 p-3 text-xs">
-        <p className="font-semibold text-gray-700 mb-1">{label}</p>
-        {payload.map((p: any) => (
-          <p key={p.name} style={{ color: p.color }} className="font-medium">
-            {p.name}: {formatCurrency(p.value)}
-          </p>
-        ))}
-      </div>
-    );
+/** Future value of a jar after `months` months with compound interest */
+function jarFutureValue(jar: SavingsJar, months: number): number {
+  if (!jar.yieldRate || jar.yieldRate <= 0) {
+    // No yield: simple linear growth
+    return jar.currentValue + jar.monthlyContribution * months;
   }
-  return null;
+  const r = toMonthlyRate(jar.yieldRate, jar.yieldPeriod ?? 'mensal');
+  const pv = jar.currentValue;
+  const pmt = jar.monthlyContribution;
+  // FV = PV*(1+r)^n + PMT*((1+r)^n - 1)/r
+  const growth = Math.pow(1 + r, months);
+  return pv * growth + (r > 0 ? pmt * (growth - 1) / r : pmt * months);
+}
+
+/** Interest earned = FV - PV - total contributions */
+function jarInterestEarned(jar: SavingsJar, months: number): number {
+  const fv = jarFutureValue(jar, months);
+  return fv - jar.currentValue - jar.monthlyContribution * months;
+}
+
+/* ── Custom Tooltip ───────────────────────────────────────── */
+const ChartTooltip = ({ active, payload, label }: any) => {
+  if (!active || !payload?.length) return null;
+  return (
+    <div style={{
+      background: 'white', border: '1px solid var(--border)',
+      borderRadius: 10, padding: '10px 14px',
+      boxShadow: '0 8px 32px rgba(0,0,0,0.10)', minWidth: 180,
+    }}>
+      <p style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-3)', letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: 8 }}>
+        {label}
+      </p>
+      {payload.map((p: any) => (
+        <div key={p.name} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16, marginBottom: 4 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <div style={{ width: 7, height: 7, borderRadius: '50%', background: p.color }} />
+            <span style={{ fontSize: 11, color: 'var(--text-2)' }}>{p.name}</span>
+          </div>
+          <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-1)', fontFamily: 'Fraunces, serif' }}>
+            {formatCurrency(p.value)}
+          </span>
+        </div>
+      ))}
+    </div>
+  );
 };
 
+/* ── Main Page ────────────────────────────────────────────── */
 export default function Projections() {
-  const { transactions, fixedExpenses, investments, currentMonth } = useStore();
-  const [horizon, setHorizon] = useState<Horizon>(12);
-  const [scenario, setScenario] = useState<Scenario>('realistic');
-  const [goalAmount, setGoalAmount] = useState('');
-  const [monthlyRate, setMonthlyRate] = useState('0.8');
+  const { savingsJars } = useStore();
+  const [horizon, setHorizon] = useState<6 | 12 | 24 | 36>(12);
 
-  // Calculate base monthly metrics from last 3 months
-  const baseMetrics = useMemo(() => {
-    let totalIncome = 0; let totalExpenses = 0; let months = 0;
-    let m = currentMonth;
-    for (let i = 0; i < 3; i++) {
-      const tx = transactions.filter((t) => isInMonth(t.date, m));
-      const inc = tx.filter((t) => t.type === 'income').reduce((s, t) => s + t.amount, 0);
-      const exp = tx.filter((t) => t.type === 'expense').reduce((s, t) => s + t.amount, 0);
-      if (inc > 0) { totalIncome += inc; totalExpenses += exp; months++; }
-      m = prevMonth(m);
-    }
-    const fixedTotal = fixedExpenses.filter((f) => f.active).reduce((s, f) => s + f.amount, 0);
-    const avgIncome = months > 0 ? totalIncome / months : 14700;
-    const avgExpenses = months > 0 ? totalExpenses / months : 8000;
-    const totalInvested = investments.reduce((s, i) => s + i.currentValue, 0);
-    const monthlyContribs = investments.reduce((s, i) => s + (i.monthlyContribution || 0), 0);
-    return { avgIncome, avgExpenses, fixedTotal, totalInvested, monthlyContribs };
-  }, [transactions, fixedExpenses, investments, currentMonth]);
+  const jarsWithYield = savingsJars.filter((j) => j.yieldRate && j.yieldRate > 0);
+  const jarsNoYield   = savingsJars.filter((j) => !j.yieldRate || j.yieldRate === 0);
 
-  // Projection data
-  const projectionData = useMemo(() => {
-    const mult = scenarioMultipliers[scenario];
-    const income = baseMetrics.avgIncome * mult.income;
-    const expenses = baseMetrics.avgExpenses * mult.expense;
-    const monthlySavings = income - expenses;
-    const rate = parseFloat(monthlyRate) / 100;
-
+  /* Build month-by-month chart data */
+  const chartData = useMemo(() => {
     const data: any[] = [];
-    let cumulativeSavings = 0;
-    let investmentValue = baseMetrics.totalInvested;
-
-    for (let i = 1; i <= horizon; i++) {
+    for (let m = 1; m <= horizon; m++) {
       const d = new Date();
-      d.setMonth(d.getMonth() + i);
+      d.setMonth(d.getMonth() + m);
       const label = d.toLocaleDateString('pt-BR', { month: 'short', year: '2-digit' });
 
-      cumulativeSavings += monthlySavings;
-      investmentValue = (investmentValue + baseMetrics.monthlyContribs) * (1 + rate);
-
-      data.push({
-        month: label,
-        Receitas: Math.round(income),
-        Despesas: Math.round(expenses),
-        Saldo: Math.round(monthlySavings),
-        'Poupança Acum.': Math.round(cumulativeSavings),
-        'Investimentos': Math.round(investmentValue),
-        Patrimônio: Math.round(cumulativeSavings + investmentValue),
+      const row: any = { month: label };
+      let total = 0;
+      savingsJars.forEach((jar) => {
+        const fv = jarFutureValue(jar, m);
+        row[jar.name] = Math.round(fv);
+        total += fv;
       });
+      row['Total'] = Math.round(total);
+      data.push(row);
     }
     return data;
-  }, [baseMetrics, scenario, horizon, monthlyRate]);
+  }, [savingsJars, horizon]);
 
-  // "When will we reach X?" calculator
-  const goalMonths = useMemo(() => {
-    if (!goalAmount) return null;
-    const goal = parseFloat(goalAmount);
-    if (!goal || goal <= 0) return null;
-    const mult = scenarioMultipliers[scenario];
-    const income = baseMetrics.avgIncome * mult.income;
-    const expenses = baseMetrics.avgExpenses * mult.expense;
-    const monthlySavings = income - expenses;
-    const rate = parseFloat(monthlyRate) / 100;
+  /* Summary at end of horizon */
+  const summary = useMemo(() => {
+    return savingsJars.map((jar) => {
+      const fv = jarFutureValue(jar, horizon);
+      const interest = jarInterestEarned(jar, horizon);
+      const totalContrib = jar.monthlyContribution * horizon;
+      const monthlyRate = jar.yieldRate
+        ? toMonthlyRate(jar.yieldRate, jar.yieldPeriod ?? 'mensal') * 100
+        : 0;
+      return { jar, fv, interest, totalContrib, monthlyRate };
+    });
+  }, [savingsJars, horizon]);
 
-    if (monthlySavings <= 0) return Infinity;
+  const totalFV       = summary.reduce((s, r) => s + r.fv, 0);
+  const totalInterest = summary.reduce((s, r) => s + r.interest, 0);
+  const totalContrib  = summary.reduce((s, r) => s + r.totalContrib, 0);
 
-    let acc = 0; let inv = baseMetrics.totalInvested;
-    for (let i = 1; i <= 360; i++) {
-      acc += monthlySavings;
-      inv = (inv + baseMetrics.monthlyContribs) * (1 + rate);
-      if (acc + inv >= goal) return i;
-    }
-    return null;
-  }, [goalAmount, baseMetrics, scenario, monthlyRate]);
-
-  const finalPatrimony = projectionData[projectionData.length - 1]?.Patrimônio || 0;
-  const finalInvested = projectionData[projectionData.length - 1]?.Investimentos || 0;
-  const totalSaved = projectionData[projectionData.length - 1]?.['Poupança Acum.'] || 0;
-  const mult = scenarioMultipliers[scenario];
-  const projectedSavings = (baseMetrics.avgIncome * mult.income) - (baseMetrics.avgExpenses * mult.expense);
+  const COLORS = ['#6D28D9', '#D5197A', '#047857', '#B45309', '#1D4ED8', '#DC2626', '#8B5CF6', '#10B981'];
 
   return (
-    <div className="space-y-6 animate-fade-in">
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }} className="animate-fade-in">
+
       {/* Controls */}
-      <div className="card p-5">
-        <div className="flex flex-wrap items-center gap-4">
-          <div>
-            <p className="form-label mb-2">Horizonte</p>
-            <div className="flex gap-1.5">
-              {([6, 12, 24] as Horizon[]).map((h) => (
-                <button key={h} onClick={() => setHorizon(h)}
-                  className={`px-4 py-2 rounded-xl text-sm font-semibold transition-all ${horizon === h ? 'bg-gradient-to-r from-purple-700 to-purple-500 text-white shadow-purple' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'}`}>
-                  {h} meses
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <div className="w-px h-10 bg-gray-100 hidden md:block" />
-
-          <div>
-            <p className="form-label mb-2">Cenário</p>
-            <div className="flex gap-1.5">
-              {(['pessimistic', 'realistic', 'optimistic'] as Scenario[]).map((s) => (
-                <button key={s} onClick={() => setScenario(s)}
-                  className={`px-4 py-2 rounded-xl text-sm font-semibold transition-all ${scenario === s
-                    ? s === 'optimistic' ? 'bg-green-500 text-white' : s === 'pessimistic' ? 'bg-red-400 text-white' : 'bg-gradient-to-r from-purple-700 to-purple-500 text-white shadow-purple'
-                    : 'bg-gray-100 text-gray-500 hover:bg-gray-200'}`}>
-                  {scenarioLabels[s]}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <div className="w-px h-10 bg-gray-100 hidden md:block" />
-
-          <div>
-            <p className="form-label mb-2">Rentabilidade/mês (%)</p>
-            <input type="number" step="0.1" className="input-field w-32" value={monthlyRate}
-              onChange={(e) => setMonthlyRate(e.target.value)} />
-          </div>
+      <div className="surface" style={{ padding: '20px 24px', display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+        <p style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-2)', marginRight: 4 }}>Horizonte:</p>
+        <div className="tab-bar" style={{ width: 'auto' }}>
+          {([6, 12, 24, 36] as const).map((h) => (
+            <button key={h} className={`tab-btn ${horizon === h ? 'active' : ''}`} onClick={() => setHorizon(h)}>
+              {h} meses
+            </button>
+          ))}
         </div>
-      </div>
 
-      {/* Summary cards */}
-      <div className="grid grid-cols-4 gap-4">
-        <div className="stat-card">
-          <p className="label mb-1">Poupança Mensal Est.</p>
-          <p className={`font-display text-xl font-semibold ${projectedSavings >= 0 ? 'text-green-600' : 'text-red-500'}`}>
-            {formatCurrency(projectedSavings)}
+        {savingsJars.length === 0 && (
+          <p style={{ fontSize: 12, color: 'var(--text-3)', marginLeft: 12 }}>
+            Adicione cofrinhos com rendimento para ver projeções.
           </p>
-          <p className="text-xs text-gray-400 mt-0.5">Cenário {scenarioLabels[scenario].toLowerCase()}</p>
-        </div>
-        <div className="stat-card">
-          <p className="label mb-1">Poupança em {horizon}m</p>
-          <p className="font-display text-xl font-semibold text-gray-800">{formatCurrency(totalSaved)}</p>
-        </div>
-        <div className="stat-card">
-          <p className="label mb-1">Investimentos em {horizon}m</p>
-          <p className="font-display text-xl font-semibold gradient-text">{formatCurrency(finalInvested)}</p>
-        </div>
-        <div className="stat-card">
-          <p className="label mb-1">Patrimônio em {horizon}m</p>
-          <p className="font-display text-xl font-semibold text-purple-700">{formatCurrency(finalPatrimony)}</p>
-        </div>
+        )}
       </div>
 
-      {/* Main projection chart */}
-      <div className="card p-6">
-        <h3 className="font-semibold text-gray-800 mb-4">Evolução do Patrimônio — {scenarioLabels[scenario]}</h3>
-        <ResponsiveContainer width="100%" height={280}>
-          <AreaChart data={projectionData}>
-            <defs>
-              <linearGradient id="patrimonioGrad" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="5%" stopColor="#7c3aed" stopOpacity={0.15} />
-                <stop offset="95%" stopColor="#7c3aed" stopOpacity={0} />
-              </linearGradient>
-              <linearGradient id="investGrad" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="5%" stopColor="#ec4899" stopOpacity={0.1} />
-                <stop offset="95%" stopColor="#ec4899" stopOpacity={0} />
-              </linearGradient>
-            </defs>
-            <CartesianGrid strokeDasharray="3 3" stroke="#f3f4f6" vertical={false} />
-            <XAxis dataKey="month" tick={{ fontSize: 10, fill: '#9ca3af' }} axisLine={false} tickLine={false} />
-            <YAxis tick={{ fontSize: 10, fill: '#9ca3af' }} axisLine={false} tickLine={false}
-              tickFormatter={(v) => `R$${(v / 1000).toFixed(0)}k`} />
-            <Tooltip content={<CustomTooltip />} />
-            <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: 11 }} />
-            <Area type="monotone" dataKey="Patrimônio" stroke="#7c3aed" strokeWidth={2.5}
-              fill="url(#patrimonioGrad)" dot={false} />
-            <Area type="monotone" dataKey="Investimentos" stroke="#ec4899" strokeWidth={2}
-              fill="url(#investGrad)" dot={false} />
-            <Area type="monotone" dataKey="Poupança Acum." stroke="#10b981" strokeWidth={2}
-              fill="none" dot={false} strokeDasharray="5 3" />
-          </AreaChart>
-        </ResponsiveContainer>
-      </div>
-
-      {/* Income vs Expenses projection */}
-      <div className="card p-6">
-        <h3 className="font-semibold text-gray-800 mb-4">Fluxo de Caixa Projetado</h3>
-        <ResponsiveContainer width="100%" height={200}>
-          <AreaChart data={projectionData}>
-            <defs>
-              <linearGradient id="recGrad" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="5%" stopColor="#10b981" stopOpacity={0.1} />
-                <stop offset="95%" stopColor="#10b981" stopOpacity={0} />
-              </linearGradient>
-              <linearGradient id="despGrad" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="5%" stopColor="#f472b6" stopOpacity={0.1} />
-                <stop offset="95%" stopColor="#f472b6" stopOpacity={0} />
-              </linearGradient>
-            </defs>
-            <CartesianGrid strokeDasharray="3 3" stroke="#f3f4f6" vertical={false} />
-            <XAxis dataKey="month" tick={{ fontSize: 10, fill: '#9ca3af' }} axisLine={false} tickLine={false} />
-            <YAxis tick={{ fontSize: 10, fill: '#9ca3af' }} axisLine={false} tickLine={false}
-              tickFormatter={(v) => `R$${(v / 1000).toFixed(0)}k`} />
-            <Tooltip content={<CustomTooltip />} />
-            <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: 11 }} />
-            <Area type="monotone" dataKey="Receitas" stroke="#10b981" strokeWidth={2} fill="url(#recGrad)" dot={false} />
-            <Area type="monotone" dataKey="Despesas" stroke="#f472b6" strokeWidth={2} fill="url(#despGrad)" dot={false} />
-          </AreaChart>
-        </ResponsiveContainer>
-      </div>
-
-      {/* Goal calculator */}
-      <div className="card p-6">
-        <h3 className="font-semibold text-gray-800 mb-1">Calculadora de Metas</h3>
-        <p className="text-sm text-gray-400 mb-5">Quando vamos atingir um valor específico?</p>
-
-        <div className="flex items-end gap-4">
-          <div className="flex-1 max-w-xs">
-            <label className="form-label">Meta (R$)</label>
-            <input type="number" className="input-field" placeholder="Ex: 100000" value={goalAmount}
-              onChange={(e) => setGoalAmount(e.target.value)} />
+      {/* Summary hero cards */}
+      {savingsJars.length > 0 && (
+        <div className="surface" style={{ padding: '0', overflow: 'hidden' }}>
+          <div style={{ display: 'flex', borderBottom: '1px solid var(--border)' }}>
+            {[
+              { label: `Total em ${horizon} meses`, value: formatCurrency(totalFV), color: 'var(--accent)' },
+              { label: 'Rendimentos acumulados', value: formatCurrency(totalInterest), color: 'var(--green)' },
+              { label: 'Total aportado', value: formatCurrency(totalContrib + savingsJars.reduce((s, j) => s + j.currentValue, 0)), color: 'var(--text-2)' },
+            ].map((s, i) => (
+              <div key={i} className="stat-chip" style={{ flex: 1 }}>
+                <p className="eyebrow" style={{ marginBottom: 6 }}>{s.label}</p>
+                <p style={{ fontFamily: 'Fraunces, serif', fontSize: '1.6rem', fontWeight: 300, letterSpacing: '-0.02em', color: s.color, lineHeight: 1 }}>
+                  {s.value}
+                </p>
+              </div>
+            ))}
           </div>
-          {goalAmount && (
-            <div className="card p-4 flex-1">
-              {goalMonths === null ? (
-                <p className="text-sm text-gray-500">Insira um valor válido</p>
-              ) : goalMonths === Infinity ? (
-                <p className="text-sm text-red-500">Poupança negativa no cenário atual</p>
-              ) : (
-                <>
-                  <p className="label mb-1">Tempo estimado</p>
-                  <p className="font-display text-2xl font-semibold gradient-text">
-                    {goalMonths < 12
-                      ? `${goalMonths} ${goalMonths === 1 ? 'mês' : 'meses'}`
-                      : `${Math.floor(goalMonths / 12)} ano${Math.floor(goalMonths / 12) > 1 ? 's' : ''} e ${goalMonths % 12} meses`}
-                  </p>
-                  <p className="text-xs text-gray-400 mt-1">
-                    Cenário {scenarioLabels[scenario].toLowerCase()} · Meta: {formatCurrency(parseFloat(goalAmount))}
-                  </p>
-                </>
-              )}
-            </div>
-          )}
         </div>
+      )}
 
-        {/* Scenario comparison table */}
-        <div className="mt-6">
-          <h4 className="text-sm font-semibold text-gray-700 mb-3">Comparação de Cenários</h4>
-          <div className="overflow-hidden rounded-xl border border-gray-100">
-            <table className="w-full text-sm">
+      {/* Chart */}
+      {savingsJars.length > 0 && (
+        <div className="surface" style={{ padding: '24px 24px 16px' }}>
+          <div className="sec-hdr" style={{ marginBottom: 24 }}>
+            <div>
+              <p className="section-title">Evolução dos Cofrinhos</p>
+              <p style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 3 }}>
+                Com rendimento composto · {horizon} meses
+              </p>
+            </div>
+          </div>
+          <ResponsiveContainer width="100%" height={280}>
+            <AreaChart data={chartData} margin={{ top: 4, right: 4, left: 0, bottom: 0 }}>
+              <defs>
+                {savingsJars.map((jar, i) => (
+                  <linearGradient key={jar.id} id={`g${i}`} x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor={jar.color || COLORS[i % COLORS.length]} stopOpacity={0.15} />
+                    <stop offset="100%" stopColor={jar.color || COLORS[i % COLORS.length]} stopOpacity={0} />
+                  </linearGradient>
+                ))}
+                <linearGradient id="gTotal" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor="var(--accent)" stopOpacity={0.10} />
+                  <stop offset="100%" stopColor="var(--accent)" stopOpacity={0} />
+                </linearGradient>
+              </defs>
+              <CartesianGrid vertical={false} stroke="#EBEBEF" />
+              <XAxis dataKey="month" axisLine={false} tickLine={false}
+                tick={{ fontSize: 11, fill: '#9898A8', fontFamily: 'Plus Jakarta Sans' }} dy={8} />
+              <YAxis axisLine={false} tickLine={false}
+                tick={{ fontSize: 10.5, fill: '#9898A8', fontFamily: 'Plus Jakarta Sans' }}
+                tickFormatter={(v) => `R$${(v / 1000).toFixed(0)}k`} width={40} />
+              <Tooltip content={<ChartTooltip />}
+                cursor={{ stroke: 'var(--border-strong)', strokeWidth: 1, strokeDasharray: '4 4' }} />
+              <Legend iconType="circle" iconSize={7} wrapperStyle={{ fontSize: 11, paddingTop: 16 }} />
+              {savingsJars.map((jar, i) => (
+                <Area key={jar.id} type="monotone" dataKey={jar.name}
+                  stroke={jar.color || COLORS[i % COLORS.length]} strokeWidth={1.5}
+                  fill={`url(#g${i})`} dot={false}
+                  activeDot={{ r: 3, stroke: 'white', strokeWidth: 2 }} />
+              ))}
+              <Area type="monotone" dataKey="Total" stroke="var(--accent)" strokeWidth={2.5}
+                fill="url(#gTotal)" dot={false}
+                activeDot={{ r: 4, fill: 'var(--accent)', stroke: 'white', strokeWidth: 2 }} />
+            </AreaChart>
+          </ResponsiveContainer>
+        </div>
+      )}
+
+      {/* Per-jar breakdown table */}
+      {summary.length > 0 && (
+        <div className="surface" style={{ overflow: 'hidden' }}>
+          <div style={{ padding: '20px 24px 16px' }}>
+            <p className="section-title">Detalhamento por Cofrinho</p>
+          </div>
+          <div style={{ overflowX: 'auto' }}>
+            <table className="data-table">
               <thead>
-                <tr className="bg-gray-50">
-                  <th className="text-left p-3 label">Cenário</th>
-                  <th className="text-right p-3 label">Receita Est.</th>
-                  <th className="text-right p-3 label">Despesa Est.</th>
-                  <th className="text-right p-3 label">Poupança/mês</th>
-                  <th className="text-right p-3 label">Patrimônio {horizon}m</th>
+                <tr>
+                  <th style={{ paddingLeft: 24 }}>Cofrinho</th>
+                  <th>Taxa Efetiva/mês</th>
+                  <th>Aporte Mensal</th>
+                  <th>Valor Atual</th>
+                  <th style={{ textAlign: 'right' }}>Em {horizon} meses</th>
+                  <th style={{ textAlign: 'right', paddingRight: 24 }}>Rendimento</th>
                 </tr>
               </thead>
               <tbody>
-                {(['pessimistic', 'realistic', 'optimistic'] as Scenario[]).map((s) => {
-                  const m = scenarioMultipliers[s];
-                  const inc = baseMetrics.avgIncome * m.income;
-                  const exp = baseMetrics.avgExpenses * m.expense;
-                  const sav = inc - exp;
-                  const rate = parseFloat(monthlyRate) / 100;
-                  let inv = baseMetrics.totalInvested;
-                  let cumSav = 0;
-                  for (let i = 0; i < horizon; i++) {
-                    cumSav += sav;
-                    inv = (inv + baseMetrics.monthlyContribs) * (1 + rate);
-                  }
-                  return (
-                    <tr key={s} className={`border-t border-gray-50 ${scenario === s ? 'bg-purple-50/50' : ''}`}>
-                      <td className="p-3 font-semibold">
-                        <span className={`badge ${s === 'optimistic' ? 'bg-green-50 text-green-600' : s === 'pessimistic' ? 'bg-red-50 text-red-500' : 'bg-purple-50 text-purple-600'}`}>
-                          {scenarioLabels[s]}
+                {summary.map(({ jar, fv, interest, monthlyRate }) => (
+                  <tr key={jar.id}>
+                    <td style={{ paddingLeft: 24 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <span style={{ fontSize: 18 }}>{jar.emoji}</span>
+                        <div>
+                          <p style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--text-1)' }}>{jar.name}</p>
+                          {jar.yieldRate ? (
+                            <p style={{ fontSize: 10.5, color: 'var(--text-3)' }}>
+                              {jar.yieldRate}% {jar.yieldPeriod}
+                            </p>
+                          ) : (
+                            <p style={{ fontSize: 10.5, color: 'var(--text-3)' }}>Sem rendimento</p>
+                          )}
+                        </div>
+                      </div>
+                    </td>
+                    <td>
+                      {monthlyRate > 0 ? (
+                        <span className="pill pill-green" style={{ fontSize: 11 }}>
+                          {monthlyRate.toFixed(3)}%/mês
                         </span>
-                      </td>
-                      <td className="p-3 text-right text-gray-600">{formatCurrency(inc)}</td>
-                      <td className="p-3 text-right text-gray-600">{formatCurrency(exp)}</td>
-                      <td className={`p-3 text-right font-semibold ${sav >= 0 ? 'text-green-600' : 'text-red-500'}`}>
-                        {formatCurrency(sav)}
-                      </td>
-                      <td className="p-3 text-right font-semibold text-purple-700">{formatCurrency(cumSav + inv)}</td>
-                    </tr>
-                  );
-                })}
+                      ) : (
+                        <span style={{ fontSize: 11, color: 'var(--text-3)' }}>—</span>
+                      )}
+                    </td>
+                    <td style={{ fontFamily: 'Fraunces, serif', fontSize: 13 }}>{formatCurrency(jar.monthlyContribution)}</td>
+                    <td style={{ fontFamily: 'Fraunces, serif', fontSize: 13 }}>{formatCurrency(jar.currentValue)}</td>
+                    <td style={{ textAlign: 'right' }}>
+                      <span style={{ fontFamily: 'Fraunces, serif', fontSize: 14, fontWeight: 400, color: 'var(--accent)', letterSpacing: '-0.01em' }}>
+                        {formatCurrency(fv)}
+                      </span>
+                    </td>
+                    <td style={{ textAlign: 'right', paddingRight: 24 }}>
+                      <span style={{ fontFamily: 'Fraunces, serif', fontSize: 13, color: interest > 0 ? 'var(--green)' : 'var(--text-3)' }}>
+                        {interest > 0 ? '+' : ''}{formatCurrency(interest)}
+                      </span>
+                    </td>
+                  </tr>
+                ))}
               </tbody>
             </table>
           </div>
         </div>
-      </div>
+      )}
+
+      {/* Jars without yield — informational */}
+      {jarsNoYield.length > 0 && jarsWithYield.length > 0 && (
+        <div className="surface" style={{ padding: '16px 24px' }}>
+          <p style={{ fontSize: 12, color: 'var(--text-3)' }}>
+            <strong style={{ color: 'var(--text-2)' }}>{jarsNoYield.map(j => j.name).join(', ')}</strong>
+            {' '}não têm rendimento cadastrado — projeção linear (só aportes).
+            Edite o cofrinho para adicionar uma taxa.
+          </p>
+        </div>
+      )}
+
+      {/* Empty state */}
+      {savingsJars.length === 0 && (
+        <div className="surface" style={{ padding: '60px 24px', textAlign: 'center' }}>
+          <p style={{ fontSize: 32, marginBottom: 12 }}>🐷</p>
+          <p style={{ fontSize: 15, fontWeight: 600, color: 'var(--text-1)', marginBottom: 8 }}>
+            Nenhum cofrinho cadastrado
+          </p>
+          <p style={{ fontSize: 13, color: 'var(--text-3)' }}>
+            Crie cofrinhos com aporte mensal e rendimento para ver as projeções aqui.
+          </p>
+        </div>
+      )}
     </div>
   );
 }

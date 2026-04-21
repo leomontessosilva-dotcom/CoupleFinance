@@ -6,7 +6,7 @@
 import { supabase } from './supabase';
 import type {
   Transaction, FixedExpense, Investment,
-  SavingsJar, UploadedDocument, CreditCard,
+  SavingsJar, UploadedDocument, CreditCard, YieldPeriod,
 } from '../types';
 
 // ── Mappers ──────────────────────────────────────────────────
@@ -60,6 +60,8 @@ const jarToDb = (j: SavingsJar) => ({
   color: j.color,
   monthly_contribution: j.monthlyContribution,
   description: j.description ?? null,
+  yield_rate: j.yieldRate ?? null,
+  yield_period: j.yieldPeriod ?? null,
 });
 const jarFromDb = (r: any): SavingsJar => ({
   id: r.id, name: r.name, emoji: r.emoji,
@@ -68,6 +70,8 @@ const jarFromDb = (r: any): SavingsJar => ({
   color: r.color,
   monthlyContribution: Number(r.monthly_contribution),
   description: r.description ?? undefined,
+  yieldRate: r.yield_rate != null ? Number(r.yield_rate) : undefined,
+  yieldPeriod: r.yield_period as YieldPeriod ?? undefined,
 });
 
 const docToDb = (d: UploadedDocument) => ({
@@ -165,6 +169,18 @@ export const docDB = {
     supabase.from('documents').insert(docToDb(d)),
   delete: (id: string) =>
     supabase.from('documents').delete().eq('id', id),
+};
+
+// ── Settings ──────────────────────────────────────────────────
+
+export const settingsDB = {
+  get: async (key: string): Promise<string | null> => {
+    const { data } = await supabase
+      .from('settings').select('value').eq('key', key).single();
+    return data?.value ?? null;
+  },
+  set: (key: string, value: string) =>
+    supabase.from('settings').upsert({ key, value, updated_at: new Date().toISOString() }),
 };
 
 // ── Credit Cards ──────────────────────────────────────────────

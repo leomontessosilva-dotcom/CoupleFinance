@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import type { Transaction, FixedExpense, Investment, SavingsJar, UploadedDocument } from '../types';
 import type { CreditCard } from '../types';
-import { txDB, fxDB, invDB, jarDB, docDB, creditCardDB } from '../lib/db';
+import { txDB, fxDB, invDB, jarDB, docDB, creditCardDB, settingsDB } from '../lib/db';
 
 interface AppState {
   // Data
@@ -17,6 +17,7 @@ interface AppState {
   activePage: string;
   isLoading: boolean;
   dbError: string | null;
+  salaries: { Leonardo: number; Serena: number };
 
   // Init
   initData: () => Promise<void>;
@@ -24,6 +25,7 @@ interface AppState {
   // UI actions
   setActivePage: (page: string) => void;
   setCurrentMonth: (month: string) => void;
+  setSalary: (person: 'Leonardo' | 'Serena', value: number) => void;
 
   // Transactions
   addTransaction: (t: Transaction) => void;
@@ -62,23 +64,32 @@ export const useStore = create<AppState>()((set, get) => ({
   savingsJars:   [],
   documents:     [],
   creditCards:   [],
-  currentMonth:     '2026-04',
-  activePage:       'dashboard',
-  isLoading:        true,
-  dbError:          null,
+  currentMonth:  '2026-04',
+  activePage:    'dashboard',
+  isLoading:     true,
+  dbError:       null,
+  salaries:      { Leonardo: 0, Serena: 0 },
 
   // ─── Init: load from Supabase ──────────────────────────────
   initData: async () => {
     set({ isLoading: true, dbError: null });
     try {
-      const [tx, fx, inv, jars, docs, cc] = await Promise.all([
+      const [tx, fx, inv, jars, docs, cc, salLeo, salSer] = await Promise.all([
         txDB.getAll(), fxDB.getAll(), invDB.getAll(),
         jarDB.getAll(), docDB.getAll(),
         creditCardDB.getAll(),
+        settingsDB.get('salary_Leonardo'),
+        settingsDB.get('salary_Serena'),
       ]);
 
-      // Load credit cards (non-fatal if missing)
+      // Load credit cards and salaries (non-fatal if missing)
       if (!cc.error) set({ creditCards: cc.data });
+      set({
+        salaries: {
+          Leonardo: salLeo ? Number(salLeo) : 0,
+          Serena:   salSer ? Number(salSer) : 0,
+        },
+      });
 
       // Check if any table errored (likely tables don't exist yet)
       const firstError = [tx, fx, inv, jars, docs].find((r) => r.error);
@@ -122,8 +133,12 @@ export const useStore = create<AppState>()((set, get) => ({
   },
 
   // ─── UI ────────────────────────────────────────────────────
-  setActivePage:    (page)  => set({ activePage: page }),
-  setCurrentMonth:  (month) => set({ currentMonth: month }),
+  setActivePage:   (page)  => set({ activePage: page }),
+  setCurrentMonth: (month) => set({ currentMonth: month }),
+  setSalary: (person, value) => {
+    set((s) => ({ salaries: { ...s.salaries, [person]: value } }));
+    settingsDB.set(`salary_${person}`, String(value));
+  },
 
   // ─── Transactions ──────────────────────────────────────────
   addTransaction: (t) => {

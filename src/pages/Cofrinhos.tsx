@@ -2,13 +2,14 @@ import { useState } from 'react';
 import { Plus, Trash2, PlusCircle, MinusCircle } from 'lucide-react';
 import { useStore } from '../store/useStore';
 import { formatCurrency, generateId } from '../utils/format';
-import type { SavingsJar } from '../types';
+import type { SavingsJar, YieldPeriod } from '../types';
 
 const EMOJIS = ['✈️', '🛡️', '🏡', '🚗', '💍', '🎓', '💻', '📱', '🎉', '🌊', '🐾', '🏥', '🎸', '🍕', '🌍'];
 const COLORS = ['#7c3aed', '#ec4899', '#10b981', '#f59e0b', '#3b82f6', '#ef4444', '#8b5cf6', '#14b8a6', '#f472b6', '#6366f1'];
 
 const emptyForm = (): Partial<SavingsJar> => ({
-  name: '', emoji: '🎯', targetValue: 0, currentValue: 0, color: '#7c3aed', monthlyContribution: 0, description: '',
+  name: '', emoji: '🎯', targetValue: 0, currentValue: 0, color: '#7c3aed',
+  monthlyContribution: 0, description: '', yieldRate: undefined, yieldPeriod: 'mensal',
 });
 
 function JarCard({ jar }: { jar: SavingsJar }) {
@@ -84,6 +85,14 @@ function JarCard({ jar }: { jar: SavingsJar }) {
             {pct >= 100 ? '✅ Alcançado!' : completionDate || 'Sem aporte'}
           </p>
         </div>
+        {jar.yieldRate != null && jar.yieldRate > 0 && (
+          <div className="col-span-2 rounded-xl p-3" style={{ background: `${jar.color}12`, border: `1px solid ${jar.color}30` }}>
+            <p className="text-[10px] uppercase tracking-wide mb-0.5" style={{ color: jar.color }}>Rendimento</p>
+            <p className="text-sm font-semibold" style={{ color: jar.color }}>
+              {jar.yieldRate}% {jar.yieldPeriod}
+            </p>
+          </div>
+        )}
       </div>
 
       {/* Actions */}
@@ -145,6 +154,8 @@ export default function Cofrinhos() {
       color: form.color!,
       monthlyContribution: Number(form.monthlyContribution) || 0,
       description: form.description,
+      yieldRate: form.yieldRate ? Number(form.yieldRate) : undefined,
+      yieldPeriod: form.yieldRate ? (form.yieldPeriod as YieldPeriod) : undefined,
     };
     addSavingsJar(j);
     setShowModal(false);
@@ -265,6 +276,23 @@ export default function Cofrinhos() {
                 <label className="form-label">Aporte Mensal (R$)</label>
                 <input type="number" className="input-field" placeholder="0,00" value={form.monthlyContribution || ''}
                   onChange={(e) => setForm({ ...form, monthlyContribution: parseFloat(e.target.value) || 0 })} />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="form-label">Rendimento (%)</label>
+                  <input type="number" step="0.01" className="input-field" placeholder="Ex: 0.8" value={form.yieldRate || ''}
+                    onChange={(e) => setForm({ ...form, yieldRate: parseFloat(e.target.value) || undefined })} />
+                </div>
+                <div>
+                  <label className="form-label">Período</label>
+                  <select className="input-field" value={form.yieldPeriod || 'mensal'}
+                    onChange={(e) => setForm({ ...form, yieldPeriod: e.target.value as YieldPeriod })}>
+                    <option value="diário">Diário</option>
+                    <option value="mensal">Mensal</option>
+                    <option value="anual">Anual</option>
+                  </select>
+                </div>
               </div>
 
               <div>

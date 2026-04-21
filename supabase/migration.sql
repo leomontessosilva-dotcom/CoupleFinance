@@ -52,6 +52,8 @@ create table if not exists savings_jars (
   color                text default '#7c3aed',
   monthly_contribution numeric(14, 2) default 0,
   description          text,
+  yield_rate           numeric(10, 4),
+  yield_period         text,
   created_at           timestamptz default now()
 );
 

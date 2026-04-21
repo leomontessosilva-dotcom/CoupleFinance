@@ -48,6 +48,8 @@ export interface Investment {
   monthlyContribution?: number;
 }
 
+export type YieldPeriod = 'diário' | 'mensal' | 'anual';
+
 export interface SavingsJar {
   id: string;
   name: string;
@@ -57,6 +59,8 @@ export interface SavingsJar {
   color: string;
   monthlyContribution: number;
   description?: string;
+  yieldRate?: number;     // percentage, e.g. 0.8 = 0.8%
+  yieldPeriod?: YieldPeriod;
 }
 
 export interface CreditCard {

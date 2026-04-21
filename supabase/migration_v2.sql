@@ -8,6 +8,11 @@
 alter table transactions
   add column if not exists payment_method text;
 
+-- Add yield fields to savings_jars
+alter table savings_jars
+  add column if not exists yield_rate  numeric(10, 4),
+  add column if not exists yield_period text;
+
 -- ── Credit Cards ───────────────────────────────────────────────
 create table if not exists credit_cards (
   id         text primary key,

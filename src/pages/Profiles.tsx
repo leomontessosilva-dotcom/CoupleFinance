@@ -1,7 +1,7 @@
 import { useState, useCallback } from 'react';
 import { useDropzone } from 'react-dropzone';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
-import { Upload, FileText, Trash2, Sparkles, CheckCircle, AlertCircle, Loader2, X } from 'lucide-react';
+import { Upload, FileText, Trash2, Sparkles, CheckCircle, AlertCircle, Loader2, X, Pencil, Check } from 'lucide-react';
 import { useStore } from '../store/useStore';
 import { formatCurrency, formatDate, isInMonth, formatMonthShort, prevMonth, formatFileSize, generateId } from '../utils/format';
 import type { Person, DocumentType, UploadedDocument, Transaction, TransactionCategory } from '../types';
@@ -133,7 +133,7 @@ function AIReviewModal({
 
 /* ── Person Profile ─────────────────────────────────────────── */
 function PersonProfile({ person }: { person: ProfilePerson }) {
-  const { transactions, fixedExpenses, documents, savingsJars, addDocument, deleteDocument, addTransaction, addToJar, currentMonth } = useStore();
+  const { transactions, fixedExpenses, documents, savingsJars, addDocument, deleteDocument, addTransaction, addToJar, currentMonth, salaries, setSalary } = useStore();
 
   const [showUploadModal, setShowUploadModal] = useState(false);
   const [docType, setDocType] = useState<DocumentType>('Holerite');
@@ -142,6 +142,8 @@ function PersonProfile({ person }: { person: ProfilePerson }) {
   const [manualDesc, setManualDesc] = useState('');
   const [pendingFile, setPendingFile] = useState<File | null>(null);
 
+  const [editingSalary, setEditingSalary] = useState(false);
+  const [salaryDraft, setSalaryDraft] = useState('');
   const [parsing, setParsing] = useState(false);
   const [parseError, setParseError] = useState('');
   const [reviewData, setReviewData] = useState<{ summary: string; items: ReviewItem[] } | null>(null);
@@ -317,9 +319,39 @@ function PersonProfile({ person }: { person: ProfilePerson }) {
           <div>
             <h2 style={{ fontFamily: 'Fraunces, serif', fontSize: '1.6rem', fontWeight: 300, marginBottom: 2 }}>{person}</h2>
             <p style={{ fontSize: 12, opacity: 0.65 }}>{isLeo ? 'Engenheiro de Software' : 'Designer UX/UI'}</p>
-            <div style={{ display: 'flex', gap: 20, marginTop: 12 }}>
+            <div style={{ display: 'flex', gap: 20, marginTop: 12, alignItems: 'flex-end' }}>
+              {/* Editable salary */}
+              <div>
+                <p style={{ fontSize: 9, textTransform: 'uppercase', letterSpacing: '0.08em', opacity: 0.6, marginBottom: 2 }}>Salário</p>
+                {editingSalary ? (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                    <input
+                      type="number"
+                      value={salaryDraft}
+                      onChange={(e) => setSalaryDraft(e.target.value)}
+                      autoFocus
+                      style={{ width: 100, background: 'rgba(255,255,255,0.2)', border: '1px solid rgba(255,255,255,0.4)', borderRadius: 6, padding: '2px 6px', fontSize: 12, color: 'white', fontFamily: 'inherit' }}
+                    />
+                    <button onClick={() => { setSalary(person, Number(salaryDraft) || 0); setEditingSalary(false); }}
+                      style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'white', padding: 2 }}>
+                      <Check size={13} />
+                    </button>
+                    <button onClick={() => setEditingSalary(false)}
+                      style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'rgba(255,255,255,0.6)', padding: 2 }}>
+                      <X size={13} />
+                    </button>
+                  </div>
+                ) : (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                    <p style={{ fontSize: 13, fontWeight: 600 }}>{formatCurrency(salaries[person])}</p>
+                    <button onClick={() => { setSalaryDraft(String(salaries[person])); setEditingSalary(true); }}
+                      style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'rgba(255,255,255,0.6)', padding: 2 }}>
+                      <Pencil size={11} />
+                    </button>
+                  </div>
+                )}
+              </div>
               {[
-                { label: 'Salário', val: formatCurrency(isLeo ? 8500 : 6200) },
                 { label: 'Receita Mês', val: formatCurrency(monthIncome) },
                 { label: 'Despesas', val: formatCurrency(monthExpenses) },
               ].map(({ label, val }) => (
