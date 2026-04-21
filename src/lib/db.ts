@@ -87,10 +87,10 @@ const docFromDb = (r: any): UploadedDocument => ({
 });
 
 const ccToDb = (c: CreditCard) => ({
-  id: c.id, name: c.name, limit: c.limit, person: c.person, color: c.color,
+  id: c.id, name: c.name, card_limit: c.limit, person: c.person, color: c.color,
 });
 const ccFromDb = (r: any): CreditCard => ({
-  id: r.id, name: r.name, limit: Number(r.limit), person: r.person, color: r.color,
+  id: r.id, name: r.name, limit: Number(r.card_limit), person: r.person, color: r.color,
 });
 
 // ── Transactions ──────────────────────────────────────────────

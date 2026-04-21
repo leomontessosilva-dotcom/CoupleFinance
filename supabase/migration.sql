@@ -80,7 +80,7 @@ create table if not exists settings (
 create table if not exists credit_cards (
   id         text primary key,
   name       text not null,
-  limit      numeric(14, 2) not null default 0,
+  card_limit numeric(14, 2) not null default 0,
   person     text not null check (person in ('Leonardo', 'Serena', 'Casal')),
   color      text default '#6D28D9',
   created_at timestamptz default now()
