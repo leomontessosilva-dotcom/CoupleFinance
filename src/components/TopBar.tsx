@@ -1,9 +1,9 @@
-import { Bell, ChevronLeft, ChevronRight, Calendar } from 'lucide-react';
+import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { useStore } from '../store/useStore';
 import { formatMonth, prevMonth, nextMonth } from '../utils/format';
 
 const pageNames: Record<string, string> = {
-  dashboard: 'Dashboard',
+  dashboard: 'Visão Geral',
   profiles: 'Perfis Individuais',
   transactions: 'Transações',
   fixed: 'Gastos Fixos',
@@ -16,52 +16,103 @@ export default function TopBar() {
   const { activePage, currentMonth, setCurrentMonth } = useStore();
 
   return (
-    <header className="fixed top-0 left-64 right-0 h-16 bg-white/80 backdrop-blur-md border-b border-gray-100 flex items-center justify-between px-8 z-30">
+    <header
+      style={{
+        position: 'fixed',
+        top: 0,
+        left: 'var(--sidebar-w)',
+        right: 0,
+        height: 'var(--topbar-h)',
+        background: 'rgba(255,255,255,0.92)',
+        backdropFilter: 'blur(12px)',
+        borderBottom: '1px solid var(--border)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        padding: '0 32px',
+        zIndex: 30,
+      }}
+    >
       {/* Page title */}
-      <h1 className="font-display text-xl font-semibold text-gray-800">
+      <h1 style={{
+        fontFamily: 'Plus Jakarta Sans, sans-serif',
+        fontSize: 15,
+        fontWeight: 700,
+        color: 'var(--text-1)',
+        letterSpacing: '-0.01em',
+      }}>
         {pageNames[activePage] || 'CoupleFinance'}
       </h1>
 
-      {/* Center: month selector */}
-      <div className="flex items-center gap-2 bg-gray-50 rounded-xl px-3 py-2 border border-gray-100">
+      {/* Month selector — editorial style */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
         <button
           onClick={() => setCurrentMonth(prevMonth(currentMonth))}
-          className="w-7 h-7 rounded-lg hover:bg-white hover:shadow-sm flex items-center justify-center transition-all"
+          className="btn-ghost btn-sm"
+          style={{ padding: '5px 8px' }}
         >
-          <ChevronLeft size={14} className="text-gray-500" />
+          <ChevronLeft size={14} />
         </button>
-        <div className="flex items-center gap-2 px-1">
-          <Calendar size={13} className="text-purple-500" />
-          <span className="text-sm font-semibold text-gray-700 capitalize w-36 text-center">
+
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 6,
+          padding: '5px 14px',
+          background: 'var(--surface-2)',
+          border: '1px solid var(--border)',
+          borderRadius: 8,
+        }}>
+          <span style={{
+            fontSize: 12.5,
+            fontWeight: 600,
+            color: 'var(--text-1)',
+            textTransform: 'capitalize',
+            minWidth: 120,
+            textAlign: 'center',
+            letterSpacing: '-0.01em',
+          }}>
             {formatMonth(currentMonth)}
           </span>
         </div>
+
         <button
           onClick={() => setCurrentMonth(nextMonth(currentMonth))}
-          className="w-7 h-7 rounded-lg hover:bg-white hover:shadow-sm flex items-center justify-center transition-all"
+          className="btn-ghost btn-sm"
+          style={{ padding: '5px 8px' }}
         >
-          <ChevronRight size={14} className="text-gray-500" />
+          <ChevronRight size={14} />
         </button>
       </div>
 
-      {/* Right: avatars + bell */}
-      <div className="flex items-center gap-3">
-        <button className="relative w-9 h-9 rounded-xl hover:bg-gray-100 flex items-center justify-center transition-all">
-          <Bell size={18} className="text-gray-500" />
-          <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-pink-500 rounded-full ring-2 ring-white" />
-        </button>
-        <div className="flex items-center gap-2 pl-3 border-l border-gray-100">
-          <div className="flex -space-x-2">
-            <div className="w-8 h-8 rounded-full bg-gradient-to-br from-purple-500 to-purple-700 flex items-center justify-center text-white text-xs font-bold ring-2 ring-white shadow-sm cursor-pointer hover:scale-105 transition-transform">
-              L
-            </div>
-            <div className="w-8 h-8 rounded-full bg-gradient-to-br from-pink-400 to-pink-600 flex items-center justify-center text-white text-xs font-bold ring-2 ring-white shadow-sm cursor-pointer hover:scale-105 transition-transform">
-              S
-            </div>
+      {/* Profile */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <div style={{ display: 'flex' }}>
+            <div
+              style={{
+                width: 30, height: 30, borderRadius: '50%',
+                background: 'var(--accent)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                color: 'white', fontSize: 11, fontWeight: 700,
+                boxShadow: '0 0 0 2px white',
+                zIndex: 1,
+              }}
+            >L</div>
+            <div
+              style={{
+                width: 30, height: 30, borderRadius: '50%',
+                background: 'var(--pink)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                color: 'white', fontSize: 11, fontWeight: 700,
+                marginLeft: -8,
+                boxShadow: '0 0 0 2px white',
+              }}
+            >S</div>
           </div>
-          <div className="hidden md:block">
-            <p className="text-xs font-semibold text-gray-700 leading-none">Leo & Serena</p>
-            <p className="text-[10px] text-gray-400 mt-0.5">Família Silva</p>
+          <div>
+            <p style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-1)', lineHeight: 1 }}>Leo & Serena</p>
+            <p style={{ fontSize: 10, color: 'var(--text-3)', marginTop: 2 }}>Família Silva</p>
           </div>
         </div>
       </div>

@@ -4,11 +4,17 @@ import TopBar from './TopBar';
 
 export default function Layout({ children }: { children: ReactNode }) {
   return (
-    <div className="min-h-screen bg-[#f8f7ff]">
+    <div style={{ minHeight: '100vh', background: 'var(--bg)' }}>
       <Sidebar />
       <TopBar />
-      <main className="ml-64 pt-16 min-h-screen">
-        <div className="p-8 max-w-[1400px]">
+      <main
+        style={{
+          marginLeft: 'var(--sidebar-w)',
+          paddingTop: 'var(--topbar-h)',
+          minHeight: '100vh',
+        }}
+      >
+        <div style={{ padding: '32px 36px', maxWidth: 1360, margin: '0 auto' }}>
           {children}
         </div>
       </main>
