@@ -1,0 +1,83 @@
+export const formatCurrency = (value: number): string =>
+  new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value);
+
+export const formatDate = (dateStr: string): string =>
+  new Date(dateStr + 'T12:00:00').toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+
+export const formatShortDate = (dateStr: string): string =>
+  new Date(dateStr + 'T12:00:00').toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' });
+
+export const formatMonth = (ym: string): string => {
+  const [year, month] = ym.split('-');
+  const date = new Date(Number(year), Number(month) - 1, 1);
+  return date.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
+};
+
+export const formatMonthShort = (ym: string): string => {
+  const [year, month] = ym.split('-');
+  const date = new Date(Number(year), Number(month) - 1, 1);
+  return date.toLocaleDateString('pt-BR', { month: 'short', year: '2-digit' });
+};
+
+export const getMonthRange = (ym: string): { start: string; end: string } => {
+  const [year, month] = ym.split('-').map(Number);
+  const start = `${year}-${String(month).padStart(2, '0')}-01`;
+  const lastDay = new Date(year, month, 0).getDate();
+  const end = `${year}-${String(month).padStart(2, '0')}-${lastDay}`;
+  return { start, end };
+};
+
+export const isInMonth = (dateStr: string, ym: string): boolean => {
+  return dateStr.startsWith(ym);
+};
+
+export const generateId = (): string =>
+  Math.random().toString(36).substring(2) + Date.now().toString(36);
+
+export const prevMonth = (ym: string): string => {
+  const [year, month] = ym.split('-').map(Number);
+  const d = new Date(year, month - 2, 1);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+};
+
+export const nextMonth = (ym: string): string => {
+  const [year, month] = ym.split('-').map(Number);
+  const d = new Date(year, month, 1);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+};
+
+export const formatFileSize = (bytes: number): string => {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+};
+
+export const categoryColors: Record<string, string> = {
+  'Salário': '#7c3aed',
+  'Freelance': '#a855f7',
+  'Investimentos': '#10b981',
+  'Outros Ganhos': '#6ee7b7',
+  'Moradia': '#3b82f6',
+  'Transporte': '#f59e0b',
+  'Alimentação': '#ec4899',
+  'Saúde': '#14b8a6',
+  'Educação': '#8b5cf6',
+  'Lazer': '#f472b6',
+  'Assinaturas': '#6366f1',
+  'Roupas': '#e879f9',
+  'Viagem': '#0ea5e9',
+  'Outros': '#9ca3af',
+  'Serviços': '#64748b',
+};
+
+export const investmentColors: Record<string, string> = {
+  'CDB': '#7c3aed',
+  'LCI': '#a855f7',
+  'LCA': '#c084fc',
+  'Ações': '#ec4899',
+  'FII': '#f472b6',
+  'Crypto': '#f59e0b',
+  'Poupança': '#10b981',
+  'Tesouro': '#3b82f6',
+  'Outros': '#9ca3af',
+};
