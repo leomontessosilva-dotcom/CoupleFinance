@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import type { Transaction, FixedExpense, Investment, SavingsJar, UploadedDocument } from '../types';
 import { mockTransactions, mockFixedExpenses, mockInvestments, mockSavingsJars, mockDocuments } from '../data/mockData';
-import { txDB, fxDB, invDB, jarDB, docDB, seedAll } from '../lib/db';
+import { txDB, fxDB, invDB, jarDB, docDB, seedAll, settingsDB } from '../lib/db';
 
 interface AppState {
   // Data
@@ -16,6 +16,7 @@ interface AppState {
   activePage: string;
   isLoading: boolean;
   dbError: string | null;
+  creditCardLimit: number;
 
   // Init
   initData: () => Promise<void>;
@@ -23,6 +24,7 @@ interface AppState {
   // UI actions
   setActivePage: (page: string) => void;
   setCurrentMonth: (month: string) => void;
+  setCreditCardLimit: (limit: number) => void;
 
   // Transactions
   addTransaction: (t: Transaction) => void;
@@ -55,19 +57,24 @@ export const useStore = create<AppState>()((set, get) => ({
   investments:   [],
   savingsJars:   [],
   documents:     [],
-  currentMonth:  '2026-04',
-  activePage:    'dashboard',
-  isLoading:     true,
-  dbError:       null,
+  currentMonth:     '2026-04',
+  activePage:       'dashboard',
+  isLoading:        true,
+  dbError:          null,
+  creditCardLimit:  0,
 
   // ─── Init: load from Supabase, seed if empty ───────────────
   initData: async () => {
     set({ isLoading: true, dbError: null });
     try {
-      const [tx, fx, inv, jars, docs] = await Promise.all([
+      const [tx, fx, inv, jars, docs, ccLimit] = await Promise.all([
         txDB.getAll(), fxDB.getAll(), invDB.getAll(),
         jarDB.getAll(), docDB.getAll(),
+        settingsDB.get('credit_card_limit'),
       ]);
+
+      // Load CC limit (non-fatal if missing)
+      if (ccLimit) set({ creditCardLimit: Number(ccLimit) });
 
       // Check if any table errored (likely tables don't exist yet)
       const firstError = [tx, fx, inv, jars, docs].find((r) => r.error);
@@ -123,6 +130,10 @@ export const useStore = create<AppState>()((set, get) => ({
   // ─── UI ────────────────────────────────────────────────────
   setActivePage:    (page)  => set({ activePage: page }),
   setCurrentMonth:  (month) => set({ currentMonth: month }),
+  setCreditCardLimit: (limit) => {
+    set({ creditCardLimit: limit });
+    settingsDB.set('credit_card_limit', String(limit));
+  },
 
   // ─── Transactions ──────────────────────────────────────────
   addTransaction: (t) => {

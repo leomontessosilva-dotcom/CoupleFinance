@@ -1,9 +1,9 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import {
   AreaChart, Area, XAxis, YAxis, Tooltip,
   ResponsiveContainer, CartesianGrid,
 } from 'recharts';
-import { ArrowUpRight, ArrowDownRight, TrendingUp } from 'lucide-react';
+import { ArrowUpRight, ArrowDownRight, TrendingUp, CreditCard, Pencil, Check, X } from 'lucide-react';
 import { useStore } from '../store/useStore';
 import {
   formatCurrency, formatShortDate, isInMonth,
@@ -42,7 +42,9 @@ const ChartTooltip = ({ active, payload, label }: any) => {
 
 /* ── Main Dashboard ──────────────────────────────────── */
 export default function Dashboard() {
-  const { transactions, fixedExpenses, investments, savingsJars, currentMonth } = useStore();
+  const { transactions, fixedExpenses, investments, savingsJars, currentMonth, creditCardLimit, setCreditCardLimit } = useStore();
+  const [editingLimit, setEditingLimit] = useState(false);
+  const [limitDraft, setLimitDraft] = useState('');
 
   /* Compute month-level aggregates */
   const m = useMemo(() => {
@@ -61,7 +63,9 @@ export default function Dashboard() {
     if (fixed < income * 0.5) score += 15;
     if (invested > income * 3) score += 15;
 
-    return { income, expenses, fixed, balance, rate, invested, jars, net, score: Math.min(100, score) };
+    const ccSpending = tx.filter((t) => t.type === 'expense' && t.paymentMethod === 'credito').reduce((s, t) => s + t.amount, 0);
+
+    return { income, expenses, fixed, balance, rate, invested, jars, net, score: Math.min(100, score), ccSpending };
   }, [transactions, fixedExpenses, investments, savingsJars, currentMonth]);
 
   /* 6-month chart data */
@@ -338,6 +342,95 @@ export default function Dashboard() {
           </div>
         </div>
       </div>
+
+      {/* ── CC Spending Widget ───────────────────────────────────────────── */}
+      {(() => {
+        const pct = creditCardLimit > 0 ? Math.min(100, (m.ccSpending / creditCardLimit) * 100) : 0;
+        const isOver = creditCardLimit > 0 && m.ccSpending > creditCardLimit;
+        const barColor = isOver ? 'var(--red)' : pct > 80 ? 'var(--amber)' : 'var(--accent)';
+
+        return (
+          <div className="surface animate-in-1" style={{ padding: '20px 24px' }}>
+            <div className="sec-hdr" style={{ marginBottom: creditCardLimit > 0 ? 16 : 0 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <div style={{ width: 32, height: 32, borderRadius: 8, background: 'var(--accent-bg)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <CreditCard size={15} color="var(--accent)" />
+                </div>
+                <div>
+                  <p className="section-title">Cartão de Crédito</p>
+                  {isOver && (
+                    <p style={{ fontSize: 10.5, color: 'var(--red)', fontWeight: 600, marginTop: 1 }}>
+                      Limite excedido em {formatCurrency(m.ccSpending - creditCardLimit)}
+                    </p>
+                  )}
+                </div>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span style={{ fontFamily: 'Fraunces, serif', fontSize: 18, fontWeight: 400, color: isOver ? 'var(--red)' : 'var(--text-1)', letterSpacing: '-0.02em' }}>
+                  {formatCurrency(m.ccSpending)}
+                </span>
+                {creditCardLimit > 0 && (
+                  <span style={{ fontSize: 11, color: 'var(--text-3)' }}>
+                    / {formatCurrency(creditCardLimit)}
+                  </span>
+                )}
+                {!editingLimit && (
+                  <button
+                    onClick={() => { setEditingLimit(true); setLimitDraft(String(creditCardLimit || '')); }}
+                    style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-3)', padding: 4, display: 'flex', alignItems: 'center' }}
+                    title="Definir limite"
+                  >
+                    <Pencil size={12} />
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {editingLimit && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14 }}>
+                <span style={{ fontSize: 12, color: 'var(--text-2)' }}>Limite:</span>
+                <input
+                  type="number"
+                  className="input"
+                  style={{ maxWidth: 140, padding: '6px 10px', fontSize: 13 }}
+                  placeholder="R$ 0"
+                  value={limitDraft}
+                  onChange={(e) => setLimitDraft(e.target.value)}
+                  autoFocus
+                />
+                <button onClick={() => { setCreditCardLimit(Number(limitDraft) || 0); setEditingLimit(false); }}
+                  style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--green)', padding: 4 }}>
+                  <Check size={14} />
+                </button>
+                <button onClick={() => setEditingLimit(false)}
+                  style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-3)', padding: 4 }}>
+                  <X size={14} />
+                </button>
+              </div>
+            )}
+
+            {creditCardLimit > 0 && (
+              <>
+                <div className="pbar pbar-lg" style={{ marginBottom: 6 }}>
+                  <div className="pbar-fill" style={{ width: `${pct}%`, background: barColor, transition: 'width 600ms ease' }} />
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <span style={{ fontSize: 10.5, color: 'var(--text-3)' }}>{pct.toFixed(0)}% utilizado</span>
+                  <span style={{ fontSize: 10.5, color: 'var(--text-3)', fontFamily: 'Fraunces, serif' }}>
+                    {formatCurrency(Math.max(0, creditCardLimit - m.ccSpending))} disponível
+                  </span>
+                </div>
+              </>
+            )}
+
+            {creditCardLimit === 0 && !editingLimit && (
+              <p style={{ fontSize: 12, color: 'var(--text-3)', marginTop: 8 }}>
+                Gasto no crédito este mês. <button onClick={() => { setEditingLimit(true); setLimitDraft(''); }} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--accent)', fontSize: 12, fontWeight: 600, padding: 0 }}>Definir limite →</button>
+              </p>
+            )}
+          </div>
+        );
+      })()}
 
       {/* ── ZONE 3: Transactions + Cofrinhos ────────────────────────────── */}
       <div className="animate-in-2" style={{ display: 'grid', gridTemplateColumns: '1fr 380px', gap: 20 }}>

@@ -7,6 +7,8 @@ export type TransactionCategory =
   | 'Moradia' | 'Transporte' | 'Alimentação' | 'Saúde' | 'Educação'
   | 'Lazer' | 'Assinaturas' | 'Roupas' | 'Viagem' | 'Outros';
 
+export type PaymentMethod = 'credito' | 'debito' | 'pix' | 'dinheiro' | 'outro';
+
 export interface Transaction {
   id: string;
   type: TransactionType;
@@ -15,6 +17,7 @@ export interface Transaction {
   amount: number;
   date: string; // ISO date string
   person: Person;
+  paymentMethod?: PaymentMethod;
 }
 
 export type FixedExpenseCategory =

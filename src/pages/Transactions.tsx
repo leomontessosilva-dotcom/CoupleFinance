@@ -2,11 +2,23 @@ import { useState, useMemo } from 'react';
 import { Plus, Trash2, Search, Download, ArrowUpRight, ArrowDownRight } from 'lucide-react';
 import { useStore } from '../store/useStore';
 import { formatCurrency, formatDate, isInMonth, categoryColors, generateId } from '../utils/format';
-import type { Transaction, TransactionType, TransactionCategory, Person } from '../types';
+import type { Transaction, TransactionType, TransactionCategory, Person, PaymentMethod } from '../types';
 
 const INCOME_CATEGORIES: TransactionCategory[] = ['Salário', 'Freelance', 'Investimentos', 'Outros Ganhos'];
 const EXPENSE_CATEGORIES: TransactionCategory[] = ['Moradia', 'Transporte', 'Alimentação', 'Saúde', 'Educação', 'Lazer', 'Assinaturas', 'Roupas', 'Viagem', 'Outros'];
 const ALL_CATEGORIES = [...INCOME_CATEGORIES, ...EXPENSE_CATEGORIES];
+
+const PAYMENT_METHODS: { value: PaymentMethod; label: string }[] = [
+  { value: 'credito', label: 'Cartão de Crédito' },
+  { value: 'debito', label: 'Cartão de Débito' },
+  { value: 'pix', label: 'Pix' },
+  { value: 'dinheiro', label: 'Dinheiro' },
+  { value: 'outro', label: 'Outro' },
+];
+
+const PAYMENT_LABELS: Record<string, string> = {
+  credito: 'Crédito', debito: 'Débito', pix: 'Pix', dinheiro: 'Dinheiro', outro: 'Outro',
+};
 
 const emptyForm = (): Partial<Transaction> => ({
   type: 'expense',
@@ -15,6 +27,7 @@ const emptyForm = (): Partial<Transaction> => ({
   amount: 0,
   date: new Date().toISOString().split('T')[0],
   person: 'Casal',
+  paymentMethod: undefined,
 });
 
 export default function Transactions() {
@@ -25,6 +38,7 @@ export default function Transactions() {
   const [filterPerson, setFilterPerson] = useState<string>('all');
   const [filterType, setFilterType] = useState<string>('all');
   const [filterCategory, setFilterCategory] = useState<string>('all');
+  const [filterPayment, setFilterPayment] = useState<string>('all');
 
   const monthTx = useMemo(() => {
     return transactions.filter((t) => isInMonth(t.date, currentMonth));
@@ -35,6 +49,7 @@ export default function Transactions() {
       if (filterPerson !== 'all' && t.person !== filterPerson) return false;
       if (filterType !== 'all' && t.type !== filterType) return false;
       if (filterCategory !== 'all' && t.category !== filterCategory) return false;
+      if (filterPayment !== 'all' && t.paymentMethod !== filterPayment) return false;
       if (search && !t.description.toLowerCase().includes(search.toLowerCase())) return false;
       return true;
     }).sort((a, b) => b.date.localeCompare(a.date));
@@ -53,6 +68,7 @@ export default function Transactions() {
       amount: Number(form.amount),
       date: form.date!,
       person: form.person as Person,
+      paymentMethod: form.paymentMethod as PaymentMethod | undefined,
     };
     addTransaction(t);
     setShowModal(false);
@@ -137,6 +153,11 @@ export default function Transactions() {
             {ALL_CATEGORIES.map((c) => <option key={c}>{c}</option>)}
           </select>
 
+          <select className="select-field w-40" value={filterPayment} onChange={(e) => setFilterPayment(e.target.value)}>
+            <option value="all">Todas formas</option>
+            {PAYMENT_METHODS.map((p) => <option key={p.value} value={p.value}>{p.label}</option>)}
+          </select>
+
           <button onClick={exportCSV} className="btn-outline flex items-center gap-1.5">
             <Download size={14} /> Exportar
           </button>
@@ -156,6 +177,7 @@ export default function Transactions() {
               <th className="text-left p-4 label">Categoria</th>
               <th className="text-left p-4 label">Data</th>
               <th className="text-left p-4 label">Pessoa</th>
+              <th className="text-left p-4 label">Forma</th>
               <th className="text-right p-4 label">Valor</th>
               <th className="p-4 w-10" />
             </tr>
@@ -189,6 +211,15 @@ export default function Transactions() {
                   <span className={`badge ${tx.person === 'Leonardo' ? 'bg-purple-50 text-purple-600' : tx.person === 'Serena' ? 'bg-pink-50 text-pink-600' : 'bg-gray-50 text-gray-600'}`}>
                     {tx.person}
                   </span>
+                </td>
+                <td className="p-4">
+                  {tx.paymentMethod ? (
+                    <span className={`badge ${tx.paymentMethod === 'credito' ? 'bg-purple-50 text-purple-600' : tx.paymentMethod === 'pix' ? 'bg-green-50 text-green-600' : 'bg-gray-50 text-gray-500'}`}>
+                      {PAYMENT_LABELS[tx.paymentMethod]}
+                    </span>
+                  ) : (
+                    <span className="text-xs text-gray-300">—</span>
+                  )}
                 </td>
                 <td className="p-4 text-right">
                   <span className={`font-semibold text-sm ${tx.type === 'income' ? 'text-green-600' : 'text-red-500'}`}>
@@ -265,6 +296,14 @@ export default function Transactions() {
                     <option>Casal</option>
                   </select>
                 </div>
+              </div>
+              <div>
+                <label className="form-label">Forma de pagamento</label>
+                <select className="select-field" value={form.paymentMethod ?? ''}
+                  onChange={(e) => setForm({ ...form, paymentMethod: (e.target.value as PaymentMethod) || undefined })}>
+                  <option value="">Não informado</option>
+                  {PAYMENT_METHODS.map((p) => <option key={p.value} value={p.value}>{p.label}</option>)}
+                </select>
               </div>
               <div className="flex gap-3 pt-2">
                 <button className="gradient-btn flex-1" onClick={handleAdd}>Salvar</button>

@@ -5,14 +5,15 @@
 
 -- ── Transactions ──────────────────────────────────────────────
 create table if not exists transactions (
-  id          text primary key,
-  type        text not null check (type in ('income', 'expense')),
-  category    text not null,
-  description text not null,
-  amount      numeric(14, 2) not null,
-  date        text not null,
-  person      text not null check (person in ('Leonardo', 'Serena', 'Casal')),
-  created_at  timestamptz default now()
+  id             text primary key,
+  type           text not null check (type in ('income', 'expense')),
+  category       text not null,
+  description    text not null,
+  amount         numeric(14, 2) not null,
+  date           text not null,
+  person         text not null check (person in ('Leonardo', 'Serena', 'Casal')),
+  payment_method text,
+  created_at     timestamptz default now()
 );
 
 -- ── Fixed Expenses ─────────────────────────────────────────────
@@ -68,6 +69,13 @@ create table if not exists documents (
   created_at timestamptz default now()
 );
 
+-- ── Settings ───────────────────────────────────────────────────
+create table if not exists settings (
+  key        text primary key,
+  value      text not null,
+  updated_at timestamptz default now()
+);
+
 -- ── Row Level Security ─────────────────────────────────────────
 -- Enable RLS on all tables
 alter table transactions   enable row level security;
@@ -91,6 +99,10 @@ create policy "auth_all" on savings_jars
   for all to authenticated using (true) with check (true);
 
 create policy "auth_all" on documents
+  for all to authenticated using (true) with check (true);
+
+alter table settings enable row level security;
+create policy "auth_all" on settings
   for all to authenticated using (true) with check (true);
 
 -- ── Enable Realtime ────────────────────────────────────────────

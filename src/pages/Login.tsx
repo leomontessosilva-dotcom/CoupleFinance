@@ -2,6 +2,8 @@ import { useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { Eye, EyeOff, ArrowRight, Loader2 } from 'lucide-react';
 
+const ALLOWED_EMAILS = ['leo.montessosilva@gmail.com', 'serenasantosjob@gmail.com'];
+
 export default function Login() {
   const [mode, setMode]   = useState<'login' | 'signup'>('login');
   const [email, setEmail] = useState('');
@@ -17,8 +19,12 @@ export default function Login() {
     setLoading(true);
     try {
       if (mode === 'login') {
-        const { error } = await supabase.auth.signInWithPassword({ email, password: pass });
+        const { data, error } = await supabase.auth.signInWithPassword({ email, password: pass });
         if (error) throw error;
+        if (!ALLOWED_EMAILS.includes(data.user?.email ?? '')) {
+          await supabase.auth.signOut();
+          throw new Error('Acesso não autorizado para este e-mail.');
+        }
       } else {
         const { error } = await supabase.auth.signUp({ email, password: pass });
         if (error) throw error;
