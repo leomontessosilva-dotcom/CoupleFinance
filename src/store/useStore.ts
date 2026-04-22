@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import type { Transaction, FixedExpense, Investment, SavingsJar, UploadedDocument } from '../types';
 import type { CreditCard } from '../types';
 import { txDB, fxDB, invDB, jarDB, docDB, creditCardDB, settingsDB } from '../lib/db';
+import { generateId } from '../utils/format';
 
 interface AppState {
   // Data
@@ -46,6 +47,7 @@ interface AppState {
   updateSavingsJar: (j: SavingsJar) => void;
   deleteSavingsJar: (id: string) => void;
   addToJar: (id: string, amount: number) => void;
+  contributeToJar: (id: string, amount: number) => void; // addToJar + creates linked transaction
 
   // Documents
   addDocument: (d: UploadedDocument) => void;
@@ -202,6 +204,32 @@ export const useStore = create<AppState>()((set, get) => ({
     set({ savingsJars: jars });
     const jar = jars.find((x) => x.id === id);
     if (jar) jarDB.update(jar);
+  },
+  // Like addToJar but also records a linked transaction for monthly tracking
+  contributeToJar: (id, amount) => {
+    const prevJar = get().savingsJars.find((x) => x.id === id);
+    if (!prevJar) return;
+    const jars = get().savingsJars.map((x) =>
+      x.id === id ? { ...x, currentValue: Math.max(0, x.currentValue + amount) } : x
+    );
+    set({ savingsJars: jars });
+    const updated = jars.find((x) => x.id === id);
+    if (updated) jarDB.update(updated);
+
+    const absAmt = Math.abs(amount);
+    if (absAmt === 0) return;
+    const t: Transaction = {
+      id: generateId(),
+      type: amount > 0 ? 'income' : 'expense',
+      category: 'Outros',
+      description: amount > 0 ? `Aporte: ${prevJar.name}` : `Retirada: ${prevJar.name}`,
+      amount: absAmt,
+      date: new Date().toISOString().split('T')[0],
+      person: 'Casal',
+      savingsJarId: id,
+    };
+    set((s) => ({ transactions: [t, ...s.transactions] }));
+    txDB.insert(t);
   },
 
   // ─── Documents ─────────────────────────────────────────────

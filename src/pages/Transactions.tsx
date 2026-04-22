@@ -129,7 +129,8 @@ export default function Transactions() {
             <input
               type="text"
               placeholder="Buscar transação..."
-              className="input-field pl-9"
+              className="input-field"
+              style={{ paddingLeft: '2.25rem' }}
               value={search}
               onChange={(e) => setSearch(e.target.value)}
             />

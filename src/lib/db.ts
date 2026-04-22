@@ -16,12 +16,14 @@ const txToDb = (t: Transaction) => ({
   description: t.description, amount: t.amount,
   date: t.date, person: t.person,
   payment_method: t.paymentMethod ?? null,
+  savings_jar_id: t.savingsJarId ?? null,
 });
 const txFromDb = (r: any): Transaction => ({
   id: r.id, type: r.type, category: r.category,
   description: r.description, amount: Number(r.amount),
   date: r.date, person: r.person,
   paymentMethod: r.payment_method ?? undefined,
+  savingsJarId: r.savings_jar_id ?? undefined,
 });
 
 const fxToDb = (f: FixedExpense) => ({

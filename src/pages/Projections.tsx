@@ -4,37 +4,50 @@ import {
   ResponsiveContainer, Legend,
 } from 'recharts';
 import { useStore } from '../store/useStore';
-import { formatCurrency } from '../utils/format';
-import type { SavingsJar } from '../types';
+import { formatCurrency, prevMonth, formatMonthShort } from '../utils/format';
+import type { SavingsJar, Transaction } from '../types';
 
 /* ── Helpers ──────────────────────────────────────────────── */
 
-/** Normalize any yield rate to a monthly decimal rate */
 function toMonthlyRate(rate: number, period: string): number {
   const r = rate / 100;
   if (period === 'diário')  return Math.pow(1 + r, 30) - 1;
   if (period === 'anual')   return Math.pow(1 + r, 1 / 12) - 1;
-  return r; // mensal
+  return r;
 }
 
-/** Future value of a jar after `months` months with compound interest */
 function jarFutureValue(jar: SavingsJar, months: number): number {
   if (!jar.yieldRate || jar.yieldRate <= 0) {
-    // No yield: simple linear growth
     return jar.currentValue + jar.monthlyContribution * months;
   }
   const r = toMonthlyRate(jar.yieldRate, jar.yieldPeriod ?? 'mensal');
   const pv = jar.currentValue;
   const pmt = jar.monthlyContribution;
-  // FV = PV*(1+r)^n + PMT*((1+r)^n - 1)/r
   const growth = Math.pow(1 + r, months);
   return pv * growth + (r > 0 ? pmt * (growth - 1) / r : pmt * months);
 }
 
-/** Interest earned = FV - PV - total contributions */
 function jarInterestEarned(jar: SavingsJar, months: number): number {
   const fv = jarFutureValue(jar, months);
   return fv - jar.currentValue - jar.monthlyContribution * months;
+}
+
+/** Returns last N months as 'YYYY-MM' strings, most recent last */
+function lastNMonths(currentMonth: string, n: number): string[] {
+  const months: string[] = [];
+  for (let i = n - 1; i >= 0; i--) {
+    let m = currentMonth;
+    for (let j = 0; j < i; j++) m = prevMonth(m);
+    months.push(m);
+  }
+  return months;
+}
+
+/** Actual contributions for a jar in a given month (YYYY-MM) */
+function actualForMonth(jar: SavingsJar, txs: Transaction[], ym: string): number {
+  return txs
+    .filter((t) => t.savingsJarId === jar.id && t.date.startsWith(ym))
+    .reduce((sum, t) => sum + (t.type === 'income' ? t.amount : -t.amount), 0);
 }
 
 /* ── Custom Tooltip ───────────────────────────────────────── */
@@ -66,11 +79,17 @@ const ChartTooltip = ({ active, payload, label }: any) => {
 
 /* ── Main Page ────────────────────────────────────────────── */
 export default function Projections() {
-  const { savingsJars } = useStore();
+  const { savingsJars, transactions, currentMonth } = useStore();
   const [horizon, setHorizon] = useState<6 | 12 | 24 | 36>(12);
 
   const jarsWithYield = savingsJars.filter((j) => j.yieldRate && j.yieldRate > 0);
   const jarsNoYield   = savingsJars.filter((j) => !j.yieldRate || j.yieldRate === 0);
+
+  const HISTORY_MONTHS = 6;
+  const historyMonths = useMemo(
+    () => lastNMonths(currentMonth, HISTORY_MONTHS),
+    [currentMonth]
+  );
 
   /* Build month-by-month chart data */
   const chartData = useMemo(() => {
@@ -105,6 +124,25 @@ export default function Projections() {
       return { jar, fv, interest, totalContrib, monthlyRate };
     });
   }, [savingsJars, horizon]);
+
+  /* Compliance per jar per month */
+  const compliance = useMemo(() => {
+    return savingsJars
+      .filter((j) => j.monthlyContribution > 0)
+      .map((jar) => {
+        const months = historyMonths.map((ym) => {
+          const actual = actualForMonth(jar, transactions, ym);
+          const planned = jar.monthlyContribution;
+          const delta = actual - planned;
+          const hasData = transactions.some((t) => t.savingsJarId === jar.id && t.date.startsWith(ym));
+          return { ym, label: formatMonthShort(ym), actual, planned, delta, hasData };
+        });
+        const tracked = months.filter((m) => m.hasData);
+        const totalDeficit = tracked.reduce((s, m) => s + (m.delta < 0 ? -m.delta : 0), 0);
+        const totalSurplus = tracked.reduce((s, m) => s + (m.delta > 0 ? m.delta : 0), 0);
+        return { jar, months, totalDeficit, totalSurplus, tracked };
+      });
+  }, [savingsJars, transactions, historyMonths]);
 
   const totalFV       = summary.reduce((s, r) => s + r.fv, 0);
   const totalInterest = summary.reduce((s, r) => s + r.interest, 0);
@@ -213,7 +251,7 @@ export default function Projections() {
                 <tr>
                   <th style={{ paddingLeft: 24 }}>Cofrinho</th>
                   <th>Taxa Efetiva/mês</th>
-                  <th>Aporte Mensal</th>
+                  <th>Meta Mensal</th>
                   <th>Valor Atual</th>
                   <th style={{ textAlign: 'right' }}>Em {horizon} meses</th>
                   <th style={{ textAlign: 'right', paddingRight: 24 }}>Rendimento</th>
@@ -262,6 +300,122 @@ export default function Projections() {
                 ))}
               </tbody>
             </table>
+          </div>
+        </div>
+      )}
+
+      {/* Compliance history — last 6 months */}
+      {compliance.length > 0 && (
+        <div className="surface" style={{ overflow: 'hidden' }}>
+          <div style={{ padding: '20px 24px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <div>
+              <p className="section-title">Histórico de Aportes</p>
+              <p style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 3 }}>
+                Últimos {HISTORY_MONTHS} meses · meta vs realizado
+              </p>
+            </div>
+          </div>
+
+          {compliance.map(({ jar, months, totalDeficit, totalSurplus, tracked }) => (
+            <div key={jar.id} style={{ borderTop: '1px solid var(--border)' }}>
+              {/* Jar header row */}
+              <div style={{
+                padding: '12px 24px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                background: 'var(--surface-2)',
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <span style={{ fontSize: 16 }}>{jar.emoji}</span>
+                  <p style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--text-1)' }}>{jar.name}</p>
+                  <span style={{ fontSize: 11, color: 'var(--text-3)' }}>Meta: {formatCurrency(jar.monthlyContribution)}/mês</span>
+                </div>
+                <div style={{ display: 'flex', gap: 12 }}>
+                  {tracked.length === 0 ? (
+                    <span style={{ fontSize: 11, color: 'var(--text-3)' }}>Sem dados de aportes ainda</span>
+                  ) : (
+                    <>
+                      {totalDeficit > 0 && (
+                        <span className="pill pill-red" style={{ fontSize: 10.5 }}>
+                          Déficit acumulado: −{formatCurrency(totalDeficit)}
+                        </span>
+                      )}
+                      {totalSurplus > 0 && (
+                        <span className="pill pill-green" style={{ fontSize: 10.5 }}>
+                          Superávit: +{formatCurrency(totalSurplus)}
+                        </span>
+                      )}
+                    </>
+                  )}
+                </div>
+              </div>
+
+              {/* Monthly cells */}
+              <div style={{
+                display: 'grid',
+                gridTemplateColumns: `repeat(${HISTORY_MONTHS}, 1fr)`,
+                gap: 0,
+              }}>
+                {months.map((m) => {
+                  const pct = m.planned > 0 ? Math.min(100, (m.actual / m.planned) * 100) : 0;
+                  const isDeficit = m.hasData && m.delta < 0;
+                  const isSurplus = m.hasData && m.delta > 0;
+
+                  return (
+                    <div
+                      key={m.ym}
+                      style={{
+                        padding: '12px 16px',
+                        borderRight: '1px solid var(--border)',
+                        background: !m.hasData
+                          ? 'transparent'
+                          : isDeficit
+                          ? '#fff7f7'
+                          : '#f0fdf4',
+                      }}
+                    >
+                      <p style={{ fontSize: 10, fontWeight: 600, color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 6 }}>
+                        {m.label}
+                      </p>
+
+                      {!m.hasData ? (
+                        <p style={{ fontSize: 11, color: 'var(--text-3)' }}>—</p>
+                      ) : (
+                        <>
+                          <p style={{ fontFamily: 'Fraunces, serif', fontSize: 13, fontWeight: 400, color: isDeficit ? 'var(--red)' : 'var(--green)', marginBottom: 2 }}>
+                            {formatCurrency(m.actual)}
+                          </p>
+                          <p style={{ fontSize: 10, color: 'var(--text-3)', marginBottom: 6 }}>
+                            {isDeficit
+                              ? `−${formatCurrency(-m.delta)}`
+                              : isSurplus
+                              ? `+${formatCurrency(m.delta)}`
+                              : '✓ Meta'}
+                          </p>
+                          {/* Progress bar */}
+                          <div style={{ height: 3, borderRadius: 99, background: 'var(--border)', overflow: 'hidden' }}>
+                            <div style={{
+                              height: '100%',
+                              borderRadius: 99,
+                              width: `${pct}%`,
+                              background: isDeficit ? 'var(--red)' : 'var(--green)',
+                            }} />
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
+
+          <div style={{ padding: '12px 24px', borderTop: '1px solid var(--border)' }}>
+            <p style={{ fontSize: 11, color: 'var(--text-3)', lineHeight: 1.6 }}>
+              A projeção acima já considera o saldo atual de cada cofrinho. Meses com déficit reduzem a
+              base de partida, meses com superávit compensam automaticamente.
+            </p>
           </div>
         </div>
       )}

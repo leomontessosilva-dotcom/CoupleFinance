@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { Plus, Trash2, PlusCircle, MinusCircle } from 'lucide-react';
 import { useStore } from '../store/useStore';
 import { formatCurrency, generateId } from '../utils/format';
@@ -13,7 +13,7 @@ const emptyForm = (): Partial<SavingsJar> => ({
 });
 
 function JarCard({ jar }: { jar: SavingsJar }) {
-  const { deleteSavingsJar, addToJar } = useStore();
+  const { deleteSavingsJar, contributeToJar, transactions, currentMonth } = useStore();
   const [showAdd, setShowAdd] = useState(false);
   const [amount, setAmount] = useState('');
   const [isAdding, setIsAdding] = useState(true);
@@ -29,10 +29,24 @@ function JarCard({ jar }: { jar: SavingsJar }) {
     completionDate = d.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
   }
 
+  // Actual contributions this month from linked transactions
+  const actualThisMonth = useMemo(() => {
+    return transactions
+      .filter((t) => t.savingsJarId === jar.id && t.date.startsWith(currentMonth))
+      .reduce((sum, t) => sum + (t.type === 'income' ? t.amount : -t.amount), 0);
+  }, [transactions, jar.id, currentMonth]);
+
+  const hasMonthlyGoal = jar.monthlyContribution > 0;
+  const hasAnyTracking = transactions.some((t) => t.savingsJarId === jar.id);
+  const hasTrackingThisMonth = transactions.some(
+    (t) => t.savingsJarId === jar.id && t.date.startsWith(currentMonth)
+  );
+  const deficit = hasMonthlyGoal ? jar.monthlyContribution - actualThisMonth : 0;
+
   const handleTransaction = () => {
     const val = parseFloat(amount);
     if (!val || val <= 0) return;
-    addToJar(jar.id, isAdding ? val : -val);
+    contributeToJar(jar.id, isAdding ? val : -val);
     setAmount('');
     setShowAdd(false);
   };
@@ -74,10 +88,12 @@ function JarCard({ jar }: { jar: SavingsJar }) {
       </div>
 
       {/* Stats */}
-      <div className="grid grid-cols-2 gap-3 mb-4">
+      <div className="grid grid-cols-2 gap-3 mb-3">
         <div className="rounded-xl bg-gray-50 p-3">
-          <p className="text-[10px] text-gray-400 uppercase tracking-wide mb-0.5">Aporte Mensal</p>
-          <p className="text-sm font-semibold text-gray-700">{formatCurrency(jar.monthlyContribution)}</p>
+          <p className="text-[10px] text-gray-400 uppercase tracking-wide mb-0.5">Meta Mensal</p>
+          <p className="text-sm font-semibold text-gray-700">
+            {hasMonthlyGoal ? formatCurrency(jar.monthlyContribution) : '—'}
+          </p>
         </div>
         <div className="rounded-xl bg-gray-50 p-3">
           <p className="text-[10px] text-gray-400 uppercase tracking-wide mb-0.5">Conclusão Est.</p>
@@ -94,6 +110,83 @@ function JarCard({ jar }: { jar: SavingsJar }) {
           </div>
         )}
       </div>
+
+      {/* Monthly compliance panel */}
+      {hasMonthlyGoal && (
+        <div
+          className="rounded-xl p-3 mb-3"
+          style={{
+            background: !hasAnyTracking
+              ? 'var(--surface-2)'
+              : !hasTrackingThisMonth
+              ? '#fffbeb'
+              : deficit > 0
+              ? '#fff7f7'
+              : deficit < 0
+              ? '#f0fdf4'
+              : '#f0fdf4',
+            border: `1px solid ${
+              !hasAnyTracking
+                ? 'var(--border)'
+                : !hasTrackingThisMonth
+                ? '#fde68a'
+                : deficit > 0
+                ? '#fecaca'
+                : '#bbf7d0'
+            }`,
+          }}
+        >
+          <p
+            className="text-[10px] uppercase tracking-wide font-semibold mb-1.5"
+            style={{
+              color: !hasAnyTracking || !hasTrackingThisMonth
+                ? '#9ca3af'
+                : deficit > 0
+                ? '#ef4444'
+                : '#10b981',
+            }}
+          >
+            Aporte Este Mês
+          </p>
+
+          {!hasAnyTracking ? (
+            <p className="text-xs text-gray-400 leading-snug">
+              Use extratos ou "Depositar" para rastrear aportes.
+            </p>
+          ) : !hasTrackingThisMonth ? (
+            <p className="text-xs text-amber-600 font-medium">
+              Nenhum aporte registrado este mês
+            </p>
+          ) : (
+            <>
+              <div className="flex items-center justify-between">
+                <div>
+                  <span className="text-sm font-semibold text-gray-800">
+                    {formatCurrency(Math.max(0, actualThisMonth))}
+                  </span>
+                  <span className="text-xs text-gray-400"> / {formatCurrency(jar.monthlyContribution)}</span>
+                </div>
+                {deficit > 0 ? (
+                  <span className="text-xs font-bold text-red-500">−{formatCurrency(deficit)}</span>
+                ) : deficit < 0 ? (
+                  <span className="text-xs font-bold text-green-600">+{formatCurrency(-deficit)} extra</span>
+                ) : (
+                  <span className="text-xs font-bold text-green-600">✓ Meta!</span>
+                )}
+              </div>
+              <div className="mt-2 h-1.5 rounded-full bg-gray-200 overflow-hidden">
+                <div
+                  className="h-full rounded-full transition-all"
+                  style={{
+                    width: `${Math.min(100, (actualThisMonth / jar.monthlyContribution) * 100)}%`,
+                    backgroundColor: deficit > 0 ? '#ef4444' : '#10b981',
+                  }}
+                />
+              </div>
+            </>
+          )}
+        </div>
+      )}
 
       {/* Actions */}
       {!showAdd ? (
@@ -186,7 +279,7 @@ export default function Cofrinhos() {
             </div>
             <div className="w-px h-8 bg-white/20" />
             <div>
-              <p className="text-purple-200 text-[10px] uppercase tracking-wider">Aportes/mês</p>
+              <p className="text-purple-200 text-[10px] uppercase tracking-wider">Meta/mês</p>
               <p className="text-white font-semibold">{formatCurrency(totalMonthly)}</p>
             </div>
             <div className="w-px h-8 bg-white/20" />
@@ -274,8 +367,9 @@ export default function Cofrinhos() {
 
               <div>
                 <label className="form-label">Aporte Mensal (R$)</label>
-                <input type="number" className="input-field" placeholder="0,00" value={form.monthlyContribution || ''}
+                <input type="number" className="input-field" placeholder="Ex: 500,00" value={form.monthlyContribution || ''}
                   onChange={(e) => setForm({ ...form, monthlyContribution: parseFloat(e.target.value) || 0 })} />
+                <p className="text-[10px] text-gray-400 mt-1">Meta de quanto você quer aportar por mês neste cofrinho</p>
               </div>
 
               <div className="grid grid-cols-2 gap-3">

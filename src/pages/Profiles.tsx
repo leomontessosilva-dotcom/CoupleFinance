@@ -206,7 +206,21 @@ function PersonProfile({ person }: { person: ProfilePerson }) {
   /* Confirm AI-parsed items */
   const handleConfirmParsed = (selected: ReviewItem[]) => {
     selected.forEach((item) => {
-      // Add transaction
+      // Find matching jar before creating the transaction
+      let matchedJarId: string | undefined = undefined;
+      if (item.jarMatch) {
+        const jar = savingsJars.find((j) =>
+          j.name.toLowerCase().includes(item.jarMatch!.toLowerCase()) ||
+          item.jarMatch!.toLowerCase().includes(j.name.toLowerCase())
+        );
+        if (jar) {
+          matchedJarId = jar.id;
+          const delta = item.type === 'income' ? item.amount : -item.amount;
+          addToJar(jar.id, delta);
+        }
+      }
+
+      // Add transaction with optional jar link for contribution tracking
       const t: Transaction = {
         id: generateId(),
         type: item.type,
@@ -216,20 +230,9 @@ function PersonProfile({ person }: { person: ProfilePerson }) {
         date: item.date,
         person: person as Person,
         paymentMethod: item.paymentMethod,
+        savingsJarId: matchedJarId,
       };
       addTransaction(t);
-
-      // Auto-update matching jar if it's a savings entry
-      if (item.jarMatch) {
-        const jar = savingsJars.find((j) =>
-          j.name.toLowerCase().includes(item.jarMatch!.toLowerCase()) ||
-          item.jarMatch!.toLowerCase().includes(j.name.toLowerCase())
-        );
-        if (jar) {
-          const delta = item.type === 'income' ? item.amount : -item.amount;
-          addToJar(jar.id, delta);
-        }
-      }
     });
 
     // Save the document record
