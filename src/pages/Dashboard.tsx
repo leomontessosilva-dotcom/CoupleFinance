@@ -11,7 +11,7 @@ import {
 } from '../utils/format';
 import type { Person } from '../types';
 
-/* ── Premium Tooltip ─────────────────────────────────── */
+/* ── Premium Chart Tooltip ───────────────────────────────── */
 const ChartTooltip = ({ active, payload, label }: any) => {
   if (!active || !payload?.length) return null;
   return (
@@ -20,19 +20,19 @@ const ChartTooltip = ({ active, payload, label }: any) => {
       border: '1px solid var(--border)',
       borderRadius: 10,
       padding: '10px 14px',
-      boxShadow: '0 8px 32px rgba(0,0,0,0.10)',
+      boxShadow: '0 8px 28px rgba(0,0,0,0.08)',
       minWidth: 160,
     }}>
-      <p style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-3)', letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: 8 }}>
+      <p style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-3)', letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 8 }}>
         {label}
       </p>
       {payload.map((p: any) => (
         <div key={p.name} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 20, marginBottom: 4 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-            <div style={{ width: 7, height: 7, borderRadius: '50%', background: p.color, flexShrink: 0 }} />
-            <span style={{ fontSize: 12, color: 'var(--text-2)' }}>{p.name}</span>
+            <div style={{ width: 6, height: 6, borderRadius: '50%', background: p.color, flexShrink: 0 }} />
+            <span style={{ fontSize: 11, color: 'var(--text-2)' }}>{p.name}</span>
           </div>
-          <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-1)', fontFamily: 'Fraunces, serif' }}>
+          <span style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--text-1)', fontFamily: 'Fraunces, serif', letterSpacing: '-0.01em' }}>
             {formatCurrency(p.value)}
           </span>
         </div>
@@ -41,15 +41,15 @@ const ChartTooltip = ({ active, payload, label }: any) => {
   );
 };
 
-/* ── Main Dashboard ──────────────────────────────────── */
+/* ── Main Dashboard ──────────────────────────────────────── */
 export default function Dashboard() {
   const { transactions, fixedExpenses, investments, savingsJars, currentMonth, creditCards, addCreditCard } = useStore();
   const [showCCModal, setShowCCModal] = useState(false);
   const [ccForm, setCcForm] = useState({ name: '', limit: '', person: 'Casal', color: '#6D28D9' });
 
-  /* Compute month-level aggregates */
+  /* Month-level aggregates */
   const m = useMemo(() => {
-    const tx = transactions.filter((t) => isInMonth(t.date, currentMonth));
+    const tx       = transactions.filter((t) => isInMonth(t.date, currentMonth));
     const income   = tx.filter((t) => t.type === 'income').reduce((s, t) => s + t.amount, 0);
     const expenses = tx.filter((t) => t.type === 'expense').reduce((s, t) => s + t.amount, 0);
     const fixed    = fixedExpenses.filter((f) => f.active).reduce((s, f) => s + f.amount, 0);
@@ -64,12 +64,14 @@ export default function Dashboard() {
     if (fixed < income * 0.5) score += 15;
     if (invested > income * 3) score += 15;
 
-    const ccSpending = tx.filter((t) => t.type === 'expense' && t.paymentMethod === 'credito').reduce((s, t) => s + t.amount, 0);
+    const ccSpending = tx
+      .filter((t) => t.type === 'expense' && t.paymentMethod === 'credito')
+      .reduce((s, t) => s + t.amount, 0);
 
     return { income, expenses, fixed, balance, rate, invested, jars, net, score: Math.min(100, score), ccSpending };
   }, [transactions, fixedExpenses, investments, savingsJars, currentMonth]);
 
-  /* 6-month chart data */
+  /* 6-month chart */
   const chartData = useMemo(() => {
     const months: string[] = [];
     for (let i = 5; i >= 0; i--) {
@@ -87,11 +89,11 @@ export default function Dashboard() {
     });
   }, [transactions, currentMonth]);
 
-  /* Recent transactions (current month) */
+  /* Recent transactions */
   const recentTx = useMemo(() =>
     [...transactions.filter((t) => isInMonth(t.date, currentMonth))]
       .sort((a, b) => b.date.localeCompare(a.date))
-      .slice(0, 7),
+      .slice(0, 8),
     [transactions, currentMonth]
   );
 
@@ -101,183 +103,119 @@ export default function Dashboard() {
     return fixedExpenses
       .filter((f) => f.active && f.dueDay >= today)
       .sort((a, b) => a.dueDay - b.dueDay)
-      .slice(0, 6);
+      .slice(0, 5);
   }, [fixedExpenses]);
 
   const topJars = savingsJars.slice(0, 4);
-
   const scoreColor = m.score >= 75 ? 'var(--green)' : m.score >= 50 ? 'var(--amber)' : 'var(--red)';
   const scoreLabel = m.score >= 75 ? 'Excelente' : m.score >= 50 ? 'Bom' : 'Atenção';
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
 
-      {/* ── ZONE 1: Hero Patrimônio ─────────────────────────────────────── */}
+      {/* ══ ZONE 1: Hero Patrimônio ══════════════════════════════════════ */}
       <div
         className="animate-in surface"
-        style={{
-          padding: '28px 32px 0',
-          overflow: 'hidden',
-          position: 'relative',
-        }}
+        style={{ padding: '32px 36px 0', overflow: 'hidden', position: 'relative' }}
       >
-        {/* Faint radial glow top-right */}
+        {/* Decorative gradient wash — very subtle */}
         <div style={{
-          position: 'absolute', top: -60, right: -60,
-          width: 320, height: 320,
-          background: 'radial-gradient(circle, rgba(109,40,217,0.06) 0%, transparent 70%)',
+          position: 'absolute', top: -80, right: -80,
+          width: 400, height: 400,
+          background: 'radial-gradient(circle at 60% 40%, rgba(109,40,217,0.05) 0%, transparent 65%)',
+          pointerEvents: 'none',
+        }} />
+        <div style={{
+          position: 'absolute', top: -40, right: 120,
+          width: 240, height: 240,
+          background: 'radial-gradient(circle, rgba(213,25,122,0.04) 0%, transparent 65%)',
           pointerEvents: 'none',
         }} />
 
-        {/* Top row: big number + score ring */}
-        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
+        {/* Hero row: big number + score ring */}
+        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', position: 'relative' }}>
           <div>
-            <p className="eyebrow" style={{ marginBottom: 8 }}>Patrimônio Líquido</p>
-            <p className="display-hero" style={{ marginBottom: 6 }}>
+            <p className="eyebrow" style={{ marginBottom: 10 }}>Patrimônio do Casal</p>
+            <p className="display-hero" style={{ marginBottom: 8 }}>
               {formatCurrency(m.net)}
             </p>
-            <p style={{ fontSize: 12, color: 'var(--text-3)' }}>
-              Investimentos + Cofrinhos + Saldo disponível
+            <p style={{ fontSize: 11.5, color: 'var(--text-3)', letterSpacing: '0.01em' }}>
+              Investimentos · Cofrinhos · Saldo disponível
             </p>
           </div>
 
           {/* Score ring */}
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, flexShrink: 0 }}>
-            <div style={{ position: 'relative', width: 72, height: 72 }}>
-              <svg viewBox="0 0 72 72" style={{ width: '100%', height: '100%', transform: 'rotate(-90deg)' }}>
-                <circle cx="36" cy="36" r="28" fill="none" stroke="var(--border)" strokeWidth="6" />
+            <div style={{ position: 'relative', width: 68, height: 68 }}>
+              <svg viewBox="0 0 68 68" style={{ width: '100%', height: '100%', transform: 'rotate(-90deg)' }}>
+                <circle cx="34" cy="34" r="27" fill="none" stroke="var(--border)" strokeWidth="5" />
                 <circle
-                  cx="36" cy="36" r="28" fill="none"
-                  stroke={scoreColor} strokeWidth="6" strokeLinecap="round"
-                  strokeDasharray={`${(m.score / 100) * 175.9} 175.9`}
+                  cx="34" cy="34" r="27" fill="none"
+                  stroke={scoreColor} strokeWidth="5" strokeLinecap="round"
+                  strokeDasharray={`${(m.score / 100) * 169.6} 169.6`}
                 />
               </svg>
               <div style={{
                 position: 'absolute', inset: 0,
                 display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
               }}>
-                <span style={{ fontFamily: 'Fraunces, serif', fontSize: 18, fontWeight: 400, color: 'var(--text-1)', lineHeight: 1 }}>{m.score}</span>
+                <span style={{ fontFamily: 'Fraunces, serif', fontSize: 17, fontWeight: 400, color: 'var(--text-1)', lineHeight: 1 }}>
+                  {m.score}
+                </span>
               </div>
             </div>
             <div style={{ textAlign: 'center' }}>
-              <p className="eyebrow">Saúde Fin.</p>
-              <p style={{ fontSize: 11, fontWeight: 700, color: scoreColor, marginTop: 1 }}>{scoreLabel}</p>
+              <p className="eyebrow" style={{ marginBottom: 2 }}>Saúde Fin.</p>
+              <p style={{ fontSize: 10.5, fontWeight: 700, color: scoreColor }}>{scoreLabel}</p>
             </div>
           </div>
         </div>
 
         {/* Stat chips row */}
-        <div className="stat-chips-row" style={{ display: 'flex', marginTop: 24, borderTop: '1px solid var(--border)' }}>
+        <div className="stat-chips-row" style={{ display: 'flex', marginTop: 28, borderTop: '1px solid var(--border)', position: 'relative' }}>
           {[
-            { label: 'Receitas do Mês', value: formatCurrency(m.income), up: true, color: 'var(--green)' },
-            { label: 'Despesas do Mês', value: formatCurrency(m.expenses), up: false, color: 'var(--red)' },
-            { label: 'Saldo', value: formatCurrency(m.balance), up: m.balance >= 0, color: m.balance >= 0 ? 'var(--green)' : 'var(--red)' },
-            { label: 'Taxa de Poupança', value: `${m.rate.toFixed(1)}%`, up: m.rate >= 20, color: m.rate >= 20 ? 'var(--green)' : m.rate >= 10 ? 'var(--amber)' : 'var(--red)' },
-            { label: 'Gastos Fixos', value: formatCurrency(m.fixed), up: null, color: 'var(--text-2)' },
-            { label: 'Total Investido', value: formatCurrency(m.invested), up: true, color: 'var(--accent)' },
+            { label: 'Receitas do Mês',   value: formatCurrency(m.income),   indicator: 'up',   color: 'var(--green)' },
+            { label: 'Despesas do Mês',   value: formatCurrency(m.expenses), indicator: 'down', color: 'var(--red)' },
+            { label: 'Saldo',             value: formatCurrency(m.balance),  indicator: m.balance >= 0 ? 'up' : 'down', color: m.balance >= 0 ? 'var(--green)' : 'var(--red)' },
+            { label: 'Taxa de Poupança',  value: `${m.rate.toFixed(1)}%`,    indicator: m.rate >= 20 ? 'up' : 'down', color: m.rate >= 20 ? 'var(--green)' : m.rate >= 10 ? 'var(--amber)' : 'var(--red)' },
+            { label: 'Gastos Fixos',      value: formatCurrency(m.fixed),    indicator: null,   color: 'var(--text-2)' },
+            { label: 'Total Investido',   value: formatCurrency(m.invested), indicator: 'up',   color: 'var(--accent)' },
           ].map((s, i) => (
             <div key={i} className="stat-chip" style={{ flex: 1 }}>
-              <p className="eyebrow" style={{ marginBottom: 4 }}>{s.label}</p>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-                <span
-                  className="display-num"
-                  style={{ fontSize: 18, fontWeight: 400, color: s.color }}
-                >
+              <p className="eyebrow" style={{ marginBottom: 5 }}>{s.label}</p>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                <span className="display-num" style={{ fontSize: 17, fontWeight: 400, color: s.color }}>
                   {s.value}
                 </span>
-                {s.up !== null && (
-                  s.up
-                    ? <ArrowUpRight size={14} color="var(--green)" />
-                    : <ArrowDownRight size={14} color="var(--red)" />
-                )}
+                {s.indicator === 'up' && <ArrowUpRight size={13} color="var(--green)" />}
+                {s.indicator === 'down' && <ArrowDownRight size={13} color="var(--red)" />}
               </div>
             </div>
           ))}
         </div>
       </div>
 
-      {/* ── CC Cards Widget ───────────────────────────────────────────── */}
-      <div className="surface animate-in-1" style={{ padding: '20px 24px' }}>
-        <div className="sec-hdr">
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <div style={{ width: 32, height: 32, borderRadius: 8, background: 'var(--accent-bg)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <CreditCard size={15} color="var(--accent)" />
-            </div>
-            <p className="section-title">Cartões de Crédito</p>
-          </div>
-          <button className="btn-secondary btn-sm" onClick={() => setShowCCModal(true)}>
-            <Plus size={13} /> Adicionar
-          </button>
-        </div>
+      {/* ══ ZONE 2: Chart + Right Rail ══════════════════════════════════ */}
+      <div className="animate-in-1 zone-grid-2" style={{ display: 'grid', gridTemplateColumns: '1fr 280px', gap: 18 }}>
 
-        {creditCards.length === 0 ? (
-          <div style={{ textAlign: 'center', padding: '20px 0' }}>
-            <p style={{ fontSize: 12, color: 'var(--text-3)', marginBottom: 10 }}>Nenhum cartão cadastrado</p>
-            <button className="btn-secondary btn-sm" onClick={() => setShowCCModal(true)}>
-              <Plus size={13} /> Adicionar cartão
-            </button>
-          </div>
-        ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-            {creditCards.map((card) => {
-              const spending = m.ccSpending;
-              const pct = card.limit > 0 ? Math.min(100, (spending / card.limit) * 100) : 0;
-              const isOver = card.limit > 0 && spending > card.limit;
-              const barColor = isOver ? 'var(--red)' : pct > 80 ? 'var(--amber)' : card.color;
-              return (
-                <div key={card.id}>
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                      <div style={{ width: 8, height: 8, borderRadius: '50%', background: card.color }} />
-                      <div>
-                        <p style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--text-1)' }}>{card.name}</p>
-                        <p style={{ fontSize: 10.5, color: 'var(--text-3)' }}>{card.person}</p>
-                      </div>
-                    </div>
-                    <div style={{ textAlign: 'right' }}>
-                      <span style={{ fontFamily: 'Fraunces, serif', fontSize: 14, color: isOver ? 'var(--red)' : 'var(--text-1)' }}>
-                        {formatCurrency(spending)}
-                      </span>
-                      {card.limit > 0 && (
-                        <p style={{ fontSize: 10, color: 'var(--text-3)' }}>/ {formatCurrency(card.limit)}</p>
-                      )}
-                    </div>
-                  </div>
-                  {card.limit > 0 && (
-                    <div className="pbar pbar-lg">
-                      <div className="pbar-fill" style={{ width: `${pct}%`, background: barColor }} />
-                    </div>
-                  )}
-                  {isOver && (
-                    <p style={{ fontSize: 10.5, color: 'var(--red)', marginTop: 4 }}>
-                      Limite excedido em {formatCurrency(spending - card.limit)}
-                    </p>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        )}
-      </div>
-
-      {/* ── ZONE 2: Featured Chart + Bills ──────────────────────────────── */}
-      <div className="animate-in-1 zone-grid-2" style={{ display: 'grid', gridTemplateColumns: '1fr 300px', gap: 20 }}>
-
-        {/* The main chart */}
+        {/* Main chart — 6-month income vs expenses */}
         <div className="surface" style={{ padding: '24px 24px 16px', position: 'relative' }}>
-          <div className="sec-hdr" style={{ marginBottom: 24 }}>
+          {/* Chart header */}
+          <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 24 }}>
             <div>
               <p className="section-title">Receitas vs Despesas</p>
-              <p style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 3 }}>Evolução dos últimos 6 meses</p>
+              <p style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 3 }}>
+                Últimos 6 meses
+              </p>
             </div>
             <div style={{ display: 'flex', gap: 16, alignItems: 'center' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                <div style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--accent)' }} />
-                <span style={{ fontSize: 11, color: 'var(--text-2)' }}>Receitas</span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                <div style={{ width: 7, height: 7, borderRadius: '50%', background: 'var(--accent)' }} />
+                <span style={{ fontSize: 10.5, color: 'var(--text-2)', fontWeight: 500 }}>Receitas</span>
               </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                <div style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--pink)' }} />
-                <span style={{ fontSize: 11, color: 'var(--text-2)' }}>Despesas</span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                <div style={{ width: 7, height: 7, borderRadius: '50%', background: 'var(--pink)' }} />
+                <span style={{ fontSize: 10.5, color: 'var(--text-2)', fontWeight: 500 }}>Despesas</span>
               </div>
             </div>
           </div>
@@ -286,35 +224,30 @@ export default function Dashboard() {
             <AreaChart data={chartData} margin={{ top: 4, right: 4, left: 0, bottom: 0 }}>
               <defs>
                 <linearGradient id="gInc" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor="#6D28D9" stopOpacity={0.12} />
+                  <stop offset="0%"   stopColor="#6D28D9" stopOpacity={0.12} />
                   <stop offset="100%" stopColor="#6D28D9" stopOpacity={0} />
                 </linearGradient>
                 <linearGradient id="gExp" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor="#D5197A" stopOpacity={0.10} />
+                  <stop offset="0%"   stopColor="#D5197A" stopOpacity={0.10} />
                   <stop offset="100%" stopColor="#D5197A" stopOpacity={0} />
                 </linearGradient>
               </defs>
 
-              {/* Very subtle horizontal guides only */}
-              <CartesianGrid
-                vertical={false}
-                stroke="#EBEBEF"
-                strokeDasharray="0"
-              />
+              <CartesianGrid vertical={false} stroke="#F0F0F4" />
 
               <XAxis
                 dataKey="name"
                 axisLine={false}
                 tickLine={false}
-                tick={{ fontSize: 11, fill: '#9898A8', fontFamily: 'Plus Jakarta Sans' }}
+                tick={{ fontSize: 10.5, fill: '#9898A8', fontFamily: 'Plus Jakarta Sans' }}
                 dy={8}
               />
               <YAxis
                 axisLine={false}
                 tickLine={false}
-                tick={{ fontSize: 10.5, fill: '#9898A8', fontFamily: 'Plus Jakarta Sans' }}
+                tick={{ fontSize: 10, fill: '#9898A8', fontFamily: 'Plus Jakarta Sans' }}
                 tickFormatter={(v) => `${(v / 1000).toFixed(0)}k`}
-                width={34}
+                width={32}
               />
 
               <Tooltip
@@ -344,219 +277,279 @@ export default function Dashboard() {
           </ResponsiveContainer>
         </div>
 
-        {/* Upcoming bills */}
-        <div className="surface" style={{ padding: '24px 20px' }}>
-          <div className="sec-hdr">
-            <p className="section-title">Próximas Contas</p>
-            <span className="pill pill-purple">{upcomingBills.length}</span>
-          </div>
+        {/* Right rail: Upcoming bills + Credit cards */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
 
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-            {upcomingBills.map((bill) => (
-              <div
-                key={bill.id}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  padding: '9px 10px',
-                  borderRadius: 8,
-                  cursor: 'default',
-                  transition: 'background 100ms',
-                }}
-                onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--surface-2)')}
-                onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
-              >
-                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                  {/* Day badge */}
-                  <div style={{
-                    width: 32, height: 32, borderRadius: 8,
-                    background: 'var(--accent-bg)',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    flexShrink: 0,
-                  }}>
-                    <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--accent)', fontFamily: 'Fraunces, serif' }}>
-                      {bill.dueDay}
+          {/* Upcoming bills */}
+          <div className="surface" style={{ padding: '20px 18px' }}>
+            <div className="sec-hdr" style={{ marginBottom: 14 }}>
+              <p className="section-title">Próximas Contas</p>
+              {upcomingBills.length > 0 && (
+                <span className="pill pill-gray">{upcomingBills.length}</span>
+              )}
+            </div>
+
+            {upcomingBills.length === 0 ? (
+              <p style={{ fontSize: 11.5, color: 'var(--text-3)', textAlign: 'center', padding: '12px 0' }}>
+                Sem contas próximas
+              </p>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+                {upcomingBills.map((bill) => (
+                  <div
+                    key={bill.id}
+                    style={{
+                      display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                      padding: '8px 8px', borderRadius: 8, transition: 'background 100ms', cursor: 'default',
+                    }}
+                    onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--surface-2)')}
+                    onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
+                      <div style={{
+                        width: 28, height: 28, borderRadius: 7,
+                        background: 'rgba(109,40,217,0.07)',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+                      }}>
+                        <span style={{ fontSize: 10.5, fontWeight: 700, color: 'var(--accent)', fontFamily: 'Fraunces, serif' }}>
+                          {bill.dueDay}
+                        </span>
+                      </div>
+                      <div>
+                        <p style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-1)' }}>{bill.name}</p>
+                        <p style={{ fontSize: 10, color: 'var(--text-3)', marginTop: 1 }}>{bill.person}</p>
+                      </div>
+                    </div>
+                    <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-1)', fontFamily: 'Fraunces, serif', letterSpacing: '-0.01em', flexShrink: 0 }}>
+                      {formatCurrency(bill.amount)}
                     </span>
                   </div>
-                  <div>
-                    <p style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--text-1)' }}>{bill.name}</p>
-                    <p style={{ fontSize: 10.5, color: 'var(--text-3)', marginTop: 1 }}>{bill.person}</p>
-                  </div>
-                </div>
-                <span style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--text-1)', fontFamily: 'Fraunces, serif', letterSpacing: '-0.01em', flexShrink: 0 }}>
-                  {formatCurrency(bill.amount)}
+                ))}
+              </div>
+            )}
+
+            {upcomingBills.length > 0 && (
+              <div style={{ marginTop: 10, paddingTop: 10, borderTop: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span className="eyebrow">Total</span>
+                <span style={{ fontFamily: 'Fraunces, serif', fontSize: 14, fontWeight: 400, color: 'var(--accent)', letterSpacing: '-0.01em' }}>
+                  {formatCurrency(upcomingBills.reduce((s, b) => s + b.amount, 0))}
                 </span>
               </div>
-            ))}
+            )}
           </div>
 
-          {/* Total upcoming */}
-          <div style={{
-            marginTop: 12,
-            paddingTop: 12,
-            borderTop: '1px solid var(--border)',
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-          }}>
-            <span style={{ fontSize: 11, color: 'var(--text-3)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Total</span>
-            <span style={{ fontFamily: 'Fraunces, serif', fontSize: 16, fontWeight: 400, color: 'var(--accent)', letterSpacing: '-0.01em' }}>
-              {formatCurrency(upcomingBills.reduce((s, b) => s + b.amount, 0))}
-            </span>
+          {/* Credit cards — compact */}
+          <div className="surface" style={{ padding: '20px 18px' }}>
+            <div className="sec-hdr" style={{ marginBottom: creditCards.length > 0 ? 16 : 0 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <CreditCard size={14} color="var(--text-3)" />
+                <p className="section-title">Cartões</p>
+              </div>
+              <button className="btn-ghost btn-sm" style={{ padding: '4px 8px' }} onClick={() => setShowCCModal(true)}>
+                <Plus size={12} />
+              </button>
+            </div>
+
+            {creditCards.length === 0 ? (
+              <button
+                className="btn-secondary btn-sm"
+                style={{ width: '100%', justifyContent: 'center', marginTop: 4 }}
+                onClick={() => setShowCCModal(true)}
+              >
+                <Plus size={12} /> Adicionar cartão
+              </button>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                {creditCards.map((card) => {
+                  const spending = m.ccSpending;
+                  const pct = card.limit > 0 ? Math.min(100, (spending / card.limit) * 100) : 0;
+                  const isOver = card.limit > 0 && spending > card.limit;
+                  const barColor = isOver ? 'var(--red)' : pct > 80 ? 'var(--amber)' : card.color;
+                  return (
+                    <div key={card.id}>
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 7 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+                          <div style={{ width: 7, height: 7, borderRadius: '50%', background: card.color, flexShrink: 0 }} />
+                          <div>
+                            <p style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-1)' }}>{card.name}</p>
+                            <p style={{ fontSize: 10, color: 'var(--text-3)' }}>{card.person}</p>
+                          </div>
+                        </div>
+                        <div style={{ textAlign: 'right' }}>
+                          <span style={{ fontFamily: 'Fraunces, serif', fontSize: 13, color: isOver ? 'var(--red)' : 'var(--text-1)' }}>
+                            {formatCurrency(spending)}
+                          </span>
+                          {card.limit > 0 && (
+                            <p style={{ fontSize: 9.5, color: 'var(--text-3)', marginTop: 1 }}>/ {formatCurrency(card.limit)}</p>
+                          )}
+                        </div>
+                      </div>
+                      {card.limit > 0 && (
+                        <div className="pbar pbar-lg">
+                          <div className="pbar-fill" style={{ width: `${pct}%`, background: barColor }} />
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
+
         </div>
       </div>
 
-      {/* ── ZONE 3: Transactions + Cofrinhos ────────────────────────────── */}
-      <div className="animate-in-2 zone-grid-2" style={{ display: 'grid', gridTemplateColumns: '1fr 380px', gap: 20 }}>
+      {/* ══ ZONE 3: Recent Transactions + Cofrinhos ══════════════════════ */}
+      <div className="animate-in-2 zone-grid-2" style={{ display: 'grid', gridTemplateColumns: '1fr 360px', gap: 18 }}>
 
         {/* Recent transactions */}
         <div className="surface" style={{ overflow: 'hidden' }}>
-          <div style={{ padding: '20px 24px 16px' }} className="sec-hdr">
+          <div style={{ padding: '18px 24px 14px' }} className="sec-hdr">
             <p className="section-title">Transações Recentes</p>
-            <span style={{ fontSize: 11, color: 'var(--text-3)' }}>Este mês</span>
+            <span style={{ fontSize: 10.5, color: 'var(--text-3)', fontWeight: 500 }}>Este mês</span>
           </div>
 
-          <table className="data-table" style={{ tableLayout: 'fixed' }}>
-            <colgroup>
-              <col style={{ width: '46%' }} />
-              <col style={{ width: '20%' }} />
-              <col style={{ width: '16%' }} />
-              <col style={{ width: '18%' }} />
-            </colgroup>
-            <thead>
-              <tr>
-                <th style={{ paddingLeft: 24 }}>Descrição</th>
-                <th>Categoria</th>
-                <th>Pessoa</th>
-                <th style={{ textAlign: 'right', paddingRight: 24 }}>Valor</th>
-              </tr>
-            </thead>
-            <tbody>
-              {recentTx.map((tx) => (
-                <tr key={tx.id}>
-                  <td style={{ paddingLeft: 24 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                      <div style={{
-                        width: 28, height: 28, borderRadius: 7, flexShrink: 0,
-                        background: `${categoryColors[tx.category] || '#9898A8'}18`,
-                        display: 'flex', alignItems: 'center', justifyContent: 'center',
-                      }}>
-                        <span style={{ fontSize: 12, fontWeight: 700, color: categoryColors[tx.category] || '#9898A8' }}>
-                          {tx.category.charAt(0)}
-                        </span>
-                      </div>
-                      <div style={{ minWidth: 0 }}>
-                        <p style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--text-1)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                          {tx.description}
-                        </p>
-                        <p style={{ fontSize: 10.5, color: 'var(--text-3)', marginTop: 1 }}>{formatShortDate(tx.date)}</p>
-                      </div>
-                    </div>
-                  </td>
-                  <td>
-                    <span
-                      className="pill"
-                      style={{
-                        background: `${categoryColors[tx.category] || '#9898A8'}14`,
-                        color: categoryColors[tx.category] || '#9898A8',
-                        fontSize: 10.5,
-                      }}
-                    >
-                      {tx.category}
-                    </span>
-                  </td>
-                  <td>
-                    <span className={`pill ${tx.person === 'Leonardo' ? 'pill-purple' : tx.person === 'Serena' ? 'pill-pink' : 'pill-gray'}`} style={{ fontSize: 10.5 }}>
-                      {tx.person}
-                    </span>
-                  </td>
-                  <td style={{ textAlign: 'right', paddingRight: 24 }}>
-                    <span style={{
-                      fontFamily: 'Fraunces, serif',
-                      fontSize: 13.5,
-                      fontWeight: 400,
-                      letterSpacing: '-0.01em',
-                      color: tx.type === 'income' ? 'var(--green)' : 'var(--red)',
-                    }}>
-                      {tx.type === 'income' ? '+' : '−'}{formatCurrency(tx.amount)}
-                    </span>
-                  </td>
+          {recentTx.length === 0 ? (
+            <div style={{ textAlign: 'center', padding: '28px 0' }}>
+              <p style={{ fontSize: 12, color: 'var(--text-3)' }}>Nenhuma transação este mês</p>
+            </div>
+          ) : (
+            <table className="data-table" style={{ tableLayout: 'fixed' }}>
+              <colgroup>
+                <col style={{ width: '45%' }} />
+                <col style={{ width: '20%' }} />
+                <col style={{ width: '16%' }} />
+                <col style={{ width: '19%' }} />
+              </colgroup>
+              <thead>
+                <tr>
+                  <th style={{ paddingLeft: 24 }}>Descrição</th>
+                  <th>Categoria</th>
+                  <th>Pessoa</th>
+                  <th style={{ textAlign: 'right', paddingRight: 24 }}>Valor</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {recentTx.map((tx) => (
+                  <tr key={tx.id}>
+                    <td style={{ paddingLeft: 24 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                        <div style={{
+                          width: 26, height: 26, borderRadius: 7, flexShrink: 0,
+                          background: `${categoryColors[tx.category] || '#9898A8'}15`,
+                          display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        }}>
+                          <span style={{ fontSize: 11, fontWeight: 700, color: categoryColors[tx.category] || '#9898A8' }}>
+                            {tx.category.charAt(0)}
+                          </span>
+                        </div>
+                        <div style={{ minWidth: 0 }}>
+                          <p style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--text-1)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            {tx.description}
+                          </p>
+                          <p style={{ fontSize: 10, color: 'var(--text-3)', marginTop: 1 }}>{formatShortDate(tx.date)}</p>
+                        </div>
+                      </div>
+                    </td>
+                    <td>
+                      <span className="pill" style={{ background: `${categoryColors[tx.category] || '#9898A8'}12`, color: categoryColors[tx.category] || '#9898A8', fontSize: 10.5 }}>
+                        {tx.category}
+                      </span>
+                    </td>
+                    <td>
+                      <span className={`pill ${tx.person === 'Leonardo' ? 'pill-purple' : tx.person === 'Serena' ? 'pill-pink' : 'pill-gray'}`} style={{ fontSize: 10.5 }}>
+                        {tx.person === 'Leonardo' ? 'Leo' : tx.person === 'Serena' ? 'Sere' : tx.person}
+                      </span>
+                    </td>
+                    <td style={{ textAlign: 'right', paddingRight: 24 }}>
+                      <span style={{
+                        fontFamily: 'Fraunces, serif',
+                        fontSize: 13,
+                        fontWeight: 400,
+                        letterSpacing: '-0.01em',
+                        color: tx.type === 'income' ? 'var(--green)' : 'var(--red)',
+                      }}>
+                        {tx.type === 'income' ? '+' : '−'}{formatCurrency(tx.amount)}
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
         </div>
 
         {/* Cofrinhos */}
-        <div className="surface" style={{ padding: '20px 24px' }}>
+        <div className="surface" style={{ padding: '20px 22px' }}>
           <div className="sec-hdr">
             <p className="section-title">Cofrinhos</p>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-              <TrendingUp size={12} color="var(--green)" />
-              <span style={{ fontSize: 11, color: 'var(--green)', fontWeight: 600 }}>
-                {formatCurrency(savingsJars.reduce((s, j) => s + j.currentValue, 0))} guardados
+            <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+              <TrendingUp size={11} color="var(--green)" />
+              <span style={{ fontSize: 10.5, color: 'var(--green)', fontWeight: 600 }}>
+                {formatCurrency(savingsJars.reduce((s, j) => s + j.currentValue, 0))}
               </span>
             </div>
           </div>
 
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-            {topJars.map((jar) => {
-              const pct = Math.min(100, (jar.currentValue / jar.targetValue) * 100);
-              const remaining = jar.targetValue - jar.currentValue;
-              const months = jar.monthlyContribution > 0
-                ? Math.ceil(remaining / jar.monthlyContribution)
-                : null;
+          {topJars.length === 0 ? (
+            <div style={{ textAlign: 'center', padding: '20px 0' }}>
+              <p style={{ fontSize: 11.5, color: 'var(--text-3)' }}>Nenhum cofrinho cadastrado</p>
+            </div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
+              {topJars.map((jar) => {
+                const pct       = Math.min(100, (jar.currentValue / jar.targetValue) * 100);
+                const remaining = jar.targetValue - jar.currentValue;
+                const months    = jar.monthlyContribution > 0
+                  ? Math.ceil(remaining / jar.monthlyContribution)
+                  : null;
 
-              return (
-                <div key={jar.id}>
-                  {/* Header row */}
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
-                      <span style={{ fontSize: 18, lineHeight: 1, flexShrink: 0 }}>{jar.emoji}</span>
-                      <div style={{ minWidth: 0 }}>
-                        <p style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--text-1)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                          {jar.name}
-                        </p>
-                        {months !== null && (
-                          <p style={{ fontSize: 10.5, color: 'var(--text-3)', marginTop: 1 }}>
-                            ~{months} {months === 1 ? 'mês' : 'meses'} p/ concluir
+                return (
+                  <div key={jar.id}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+                        <span style={{ fontSize: 17, lineHeight: 1, flexShrink: 0 }}>{jar.emoji}</span>
+                        <div style={{ minWidth: 0 }}>
+                          <p style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--text-1)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            {jar.name}
                           </p>
-                        )}
+                          {months !== null && (
+                            <p style={{ fontSize: 10, color: 'var(--text-3)', marginTop: 1 }}>
+                              ~{months} {months === 1 ? 'mês' : 'meses'} p/ concluir
+                            </p>
+                          )}
+                        </div>
                       </div>
+                      <span style={{ fontFamily: 'Fraunces, serif', fontSize: 13, fontWeight: 400, color: jar.color, letterSpacing: '-0.01em', flexShrink: 0 }}>
+                        {pct.toFixed(0)}%
+                      </span>
                     </div>
-                    <span style={{ fontFamily: 'Fraunces, serif', fontSize: 13, fontWeight: 400, color: jar.color, letterSpacing: '-0.01em', flexShrink: 0 }}>
-                      {pct.toFixed(0)}%
-                    </span>
-                  </div>
 
-                  {/* Progress */}
-                  <div className="pbar pbar-lg">
-                    <div className="pbar-fill" style={{ width: `${pct}%`, background: jar.color }} />
-                  </div>
+                    <div className="pbar pbar-lg">
+                      <div className="pbar-fill" style={{ width: `${pct}%`, background: jar.color }} />
+                    </div>
 
-                  {/* Sub values */}
-                  <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 5 }}>
-                    <span style={{ fontSize: 10.5, color: 'var(--text-3)', fontFamily: 'Fraunces, serif' }}>
-                      {formatCurrency(jar.currentValue)}
-                    </span>
-                    <span style={{ fontSize: 10.5, color: 'var(--text-3)', fontFamily: 'Fraunces, serif' }}>
-                      {formatCurrency(jar.targetValue)}
-                    </span>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 5 }}>
+                      <span style={{ fontSize: 10.5, color: 'var(--text-3)', fontFamily: 'Fraunces, serif' }}>
+                        {formatCurrency(jar.currentValue)}
+                      </span>
+                      <span style={{ fontSize: 10.5, color: 'var(--text-3)', fontFamily: 'Fraunces, serif' }}>
+                        {formatCurrency(jar.targetValue)}
+                      </span>
+                    </div>
                   </div>
-                </div>
-              );
-            })}
-          </div>
+                );
+              })}
+            </div>
+          )}
         </div>
       </div>
 
-      {/* Add CC Modal */}
+      {/* ══ Add CC Modal ════════════════════════════════════════════════ */}
       {showCCModal && (
         <div className="modal-overlay" onClick={() => setShowCCModal(false)}>
           <div className="modal-panel" onClick={e => e.stopPropagation()}>
-            <h3 style={{ fontFamily: 'Fraunces, serif', fontSize: '1.2rem', fontWeight: 300, marginBottom: 20, color: 'var(--text-1)' }}>
+            <h3 style={{ fontFamily: 'Fraunces, serif', fontSize: '1.2rem', fontWeight: 300, marginBottom: 20, color: 'var(--text-1)', letterSpacing: '-0.02em' }}>
               Novo Cartão de Crédito
             </h3>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
@@ -586,8 +579,11 @@ export default function Dashboard() {
                 <div style={{ display: 'flex', gap: 8 }}>
                   {['#6D28D9', '#D5197A', '#047857', '#B45309', '#1D4ED8', '#DC2626'].map(c => (
                     <div key={c} onClick={() => setCcForm({...ccForm, color: c})}
-                      style={{ width: 24, height: 24, borderRadius: '50%', background: c, cursor: 'pointer',
-                        boxShadow: ccForm.color === c ? `0 0 0 2px white, 0 0 0 4px ${c}` : 'none' }} />
+                      style={{
+                        width: 22, height: 22, borderRadius: '50%', background: c, cursor: 'pointer',
+                        boxShadow: ccForm.color === c ? `0 0 0 2px white, 0 0 0 3px ${c}` : 'none',
+                        transition: 'box-shadow 100ms',
+                      }} />
                   ))}
                 </div>
               </div>
@@ -601,7 +597,8 @@ export default function Dashboard() {
                   }}>
                   Salvar
                 </button>
-                <button className="btn-secondary" style={{ flex: 1, justifyContent: 'center' }} onClick={() => setShowCCModal(false)}>
+                <button className="btn-secondary" style={{ flex: 1, justifyContent: 'center' }}
+                  onClick={() => setShowCCModal(false)}>
                   Cancelar
                 </button>
               </div>

@@ -3,13 +3,13 @@ import { useStore } from '../store/useStore';
 import { formatMonth, prevMonth, nextMonth } from '../utils/format';
 
 const pageNames: Record<string, string> = {
-  dashboard: 'Visão Geral',
-  profiles: 'Perfis Individuais',
+  dashboard:    'Visão Geral',
+  profiles:     'Perfis Individuais',
   transactions: 'Transações',
-  fixed: 'Gastos Fixos',
-  investments: 'Investimentos',
-  jars: 'Cofrinhos',
-  projections: 'Projeções',
+  fixed:        'Gastos Fixos',
+  investments:  'Investimentos',
+  jars:         'Cofrinhos',
+  projections:  'Projeções',
 };
 
 export default function TopBar() {
@@ -23,52 +23,52 @@ export default function TopBar() {
         left: 'var(--sidebar-w)',
         right: 0,
         height: 'var(--topbar-h)',
-        background: 'rgba(255,255,255,0.92)',
-        backdropFilter: 'blur(12px)',
+        background: 'rgba(255,255,255,0.94)',
+        backdropFilter: 'blur(16px)',
+        WebkitBackdropFilter: 'blur(16px)',
         borderBottom: '1px solid var(--border)',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'space-between',
-        padding: '0 32px',
+        padding: '0 28px',
         zIndex: 30,
       }}
     >
       {/* Page title */}
       <h1 style={{
-        fontFamily: 'Plus Jakarta Sans, sans-serif',
-        fontSize: 15,
-        fontWeight: 700,
+        fontSize: 14,
+        fontWeight: 600,
         color: 'var(--text-1)',
-        letterSpacing: '-0.01em',
+        letterSpacing: '-0.02em',
+        fontFamily: 'Plus Jakarta Sans, sans-serif',
       }}>
         {pageNames[activePage] || 'CoupleFinance'}
       </h1>
 
-      {/* Month selector — editorial style */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+      {/* Month selector */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
         <button
           onClick={() => setCurrentMonth(prevMonth(currentMonth))}
           className="btn-ghost btn-sm"
-          style={{ padding: '5px 8px' }}
+          style={{ padding: '4px 7px', color: 'var(--text-3)' }}
         >
-          <ChevronLeft size={14} />
+          <ChevronLeft size={13} />
         </button>
 
         <div style={{
           display: 'flex',
           alignItems: 'center',
-          gap: 6,
           padding: '5px 14px',
-          background: 'var(--surface-2)',
           border: '1px solid var(--border)',
-          borderRadius: 8,
+          borderRadius: 7,
+          background: 'var(--surface-2)',
         }}>
           <span style={{
-            fontSize: 12.5,
+            fontSize: 12,
             fontWeight: 600,
             color: 'var(--text-1)',
             textTransform: 'capitalize',
-            minWidth: 120,
+            minWidth: 116,
             textAlign: 'center',
             letterSpacing: '-0.01em',
           }}>
@@ -79,41 +79,33 @@ export default function TopBar() {
         <button
           onClick={() => setCurrentMonth(nextMonth(currentMonth))}
           className="btn-ghost btn-sm"
-          style={{ padding: '5px 8px' }}
+          style={{ padding: '4px 7px', color: 'var(--text-3)' }}
         >
-          <ChevronRight size={14} />
+          <ChevronRight size={13} />
         </button>
       </div>
 
-      {/* Profile */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <div style={{ display: 'flex' }}>
-            <div
-              style={{
-                width: 30, height: 30, borderRadius: '50%',
-                background: 'var(--accent)',
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                color: 'white', fontSize: 11, fontWeight: 700,
-                boxShadow: '0 0 0 2px white',
-                zIndex: 1,
-              }}
-            >L</div>
-            <div
-              style={{
-                width: 30, height: 30, borderRadius: '50%',
-                background: 'var(--pink)',
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                color: 'white', fontSize: 11, fontWeight: 700,
-                marginLeft: -8,
-                boxShadow: '0 0 0 2px white',
-              }}
-            >S</div>
-          </div>
-          <div>
-            <p style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-1)', lineHeight: 1 }}>Leo & Serena</p>
-            <p style={{ fontSize: 10, color: 'var(--text-3)', marginTop: 2 }}>Família Silva</p>
-          </div>
+      {/* Profile avatars */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+        <div style={{ display: 'flex' }}>
+          <div style={{
+            width: 28, height: 28, borderRadius: '50%',
+            background: 'var(--accent)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            color: 'white', fontSize: 10.5, fontWeight: 700,
+            boxShadow: '0 0 0 2px white', zIndex: 1,
+          }}>L</div>
+          <div style={{
+            width: 28, height: 28, borderRadius: '50%',
+            background: 'var(--pink)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            color: 'white', fontSize: 10.5, fontWeight: 700,
+            marginLeft: -7, boxShadow: '0 0 0 2px white',
+          }}>S</div>
+        </div>
+        <div style={{ lineHeight: 1 }}>
+          <p style={{ fontSize: 11.5, fontWeight: 600, color: 'var(--text-1)', letterSpacing: '-0.01em' }}>Leo & Serena</p>
+          <p style={{ fontSize: 9.5, color: 'var(--text-3)', marginTop: 2 }}>Família Silva</p>
         </div>
       </div>
     </header>
