@@ -59,10 +59,11 @@ export default function Dashboard() {
     const jars     = savingsJars.reduce((s, j) => s + j.currentValue, 0);
     const net      = invested + jars + Math.max(0, balance);
 
-    let score = 50;
-    if (rate >= 20) score += 20; else if (rate >= 10) score += 10;
-    if (fixed < income * 0.5) score += 15;
-    if (invested > income * 3) score += 15;
+    // 0-100: savings rate (40pt) + fixed ratio (30pt) + investment wealth (30pt)
+    let score = 0;
+    if (rate >= 30) score += 40; else if (rate >= 20) score += 30; else if (rate >= 10) score += 20; else if (rate > 0) score += 10;
+    if (income > 0) { const fr = fixed / income; if (fr < 0.3) score += 30; else if (fr < 0.4) score += 22; else if (fr < 0.5) score += 15; else if (fr < 0.7) score += 7; }
+    if (income > 0) { if (invested > income * 6) score += 30; else if (invested > income * 3) score += 22; else if (invested > income) score += 15; else if (invested > 0) score += 7; }
 
     const ccSpending = tx
       .filter((t) => t.type === 'expense' && t.paymentMethod === 'credito')

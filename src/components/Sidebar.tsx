@@ -19,7 +19,7 @@ export default function Sidebar() {
 
   return (
     <aside
-      style={{ width: 'var(--sidebar-w)' }}
+      style={{ width: 'var(--sidebar-w)', overflow: 'hidden' }}
       className="fixed left-0 top-0 h-full bg-white flex flex-col z-40"
     >
       <div style={{ borderRight: '1px solid var(--border)', height: '100%', display: 'flex', flexDirection: 'column' }}>
