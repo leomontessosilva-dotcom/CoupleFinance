@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react';
-import { Plus, Trash2, PlusCircle, MinusCircle } from 'lucide-react';
+import { Plus, Trash2, PlusCircle, MinusCircle, Pencil } from 'lucide-react';
 import { useStore } from '../store/useStore';
 import { formatCurrency, generateId } from '../utils/format';
 import type { SavingsJar, YieldPeriod } from '../types';
@@ -12,7 +12,7 @@ const emptyForm = (): Partial<SavingsJar> => ({
   monthlyContribution: 0, description: '', yieldRate: undefined, yieldPeriod: 'mensal',
 });
 
-function JarCard({ jar }: { jar: SavingsJar }) {
+function JarCard({ jar, onEdit }: { jar: SavingsJar; onEdit: (jar: SavingsJar) => void }) {
   const { deleteSavingsJar, contributeToJar, transactions, currentMonth } = useStore();
   const [showAdd, setShowAdd] = useState(false);
   const [amount, setAmount] = useState('');
@@ -64,9 +64,14 @@ function JarCard({ jar }: { jar: SavingsJar }) {
             {jar.description && <p className="text-xs text-gray-400 mt-0.5">{jar.description}</p>}
           </div>
         </div>
-        <button onClick={() => deleteSavingsJar(jar.id)} className="w-7 h-7 rounded-lg hover:bg-red-50 flex items-center justify-center transition-colors opacity-0 group-hover:opacity-100">
-          <Trash2 size={13} className="text-red-400" />
-        </button>
+        <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+          <button onClick={() => onEdit(jar)} className="w-7 h-7 rounded-lg hover:bg-purple-50 flex items-center justify-center transition-colors">
+            <Pencil size={12} className="text-purple-400" />
+          </button>
+          <button onClick={() => deleteSavingsJar(jar.id)} className="w-7 h-7 rounded-lg hover:bg-red-50 flex items-center justify-center transition-colors">
+            <Trash2 size={13} className="text-red-400" />
+          </button>
+        </div>
       </div>
 
       {/* Progress */}
@@ -227,32 +232,69 @@ function JarCard({ jar }: { jar: SavingsJar }) {
 }
 
 export default function Cofrinhos() {
-  const { savingsJars, addSavingsJar } = useStore();
+  const { savingsJars, addSavingsJar, updateSavingsJar } = useStore();
   const [showModal, setShowModal] = useState(false);
+  const [editingJar, setEditingJar] = useState<SavingsJar | null>(null);
   const [form, setForm] = useState(emptyForm());
+
+  const openEdit = (jar: SavingsJar) => {
+    setEditingJar(jar);
+    setForm({
+      name: jar.name,
+      emoji: jar.emoji,
+      targetValue: jar.targetValue,
+      currentValue: jar.currentValue,
+      color: jar.color,
+      monthlyContribution: jar.monthlyContribution,
+      description: jar.description,
+      yieldRate: jar.yieldRate,
+      yieldPeriod: jar.yieldPeriod ?? 'mensal',
+    });
+    setShowModal(true);
+  };
+
+  const closeModal = () => {
+    setShowModal(false);
+    setEditingJar(null);
+    setForm(emptyForm());
+  };
 
   const totalSaved = savingsJars.reduce((s, j) => s + j.currentValue, 0);
   const totalTarget = savingsJars.reduce((s, j) => s + j.targetValue, 0);
   const totalMonthly = savingsJars.reduce((s, j) => s + j.monthlyContribution, 0);
   const overallPct = totalTarget > 0 ? (totalSaved / totalTarget) * 100 : 0;
 
-  const handleAdd = () => {
+  const handleSave = () => {
     if (!form.name || !form.targetValue) return;
-    const j: SavingsJar = {
-      id: generateId(),
-      name: form.name!,
-      emoji: form.emoji!,
-      targetValue: Number(form.targetValue),
-      currentValue: Number(form.currentValue) || 0,
-      color: form.color!,
-      monthlyContribution: Number(form.monthlyContribution) || 0,
-      description: form.description,
-      yieldRate: form.yieldRate ? Number(form.yieldRate) : undefined,
-      yieldPeriod: form.yieldRate ? (form.yieldPeriod as YieldPeriod) : undefined,
-    };
-    addSavingsJar(j);
-    setShowModal(false);
-    setForm(emptyForm());
+    if (editingJar) {
+      const updated: SavingsJar = {
+        ...editingJar,
+        name: form.name!,
+        emoji: form.emoji!,
+        targetValue: Number(form.targetValue),
+        color: form.color!,
+        monthlyContribution: Number(form.monthlyContribution) || 0,
+        description: form.description,
+        yieldRate: form.yieldRate ? Number(form.yieldRate) : undefined,
+        yieldPeriod: form.yieldRate ? (form.yieldPeriod as YieldPeriod) : undefined,
+      };
+      updateSavingsJar(updated);
+    } else {
+      const j: SavingsJar = {
+        id: generateId(),
+        name: form.name!,
+        emoji: form.emoji!,
+        targetValue: Number(form.targetValue),
+        currentValue: Number(form.currentValue) || 0,
+        color: form.color!,
+        monthlyContribution: Number(form.monthlyContribution) || 0,
+        description: form.description,
+        yieldRate: form.yieldRate ? Number(form.yieldRate) : undefined,
+        yieldPeriod: form.yieldRate ? (form.yieldPeriod as YieldPeriod) : undefined,
+      };
+      addSavingsJar(j);
+    }
+    closeModal();
   };
 
   return (
@@ -294,7 +336,7 @@ export default function Cofrinhos() {
       {/* Jars grid */}
       <div className="flex items-center justify-between">
         <h3 className="font-semibold text-gray-700">Seus Cofrinhos ({savingsJars.length})</h3>
-        <button onClick={() => { setForm(emptyForm()); setShowModal(true); }} className="gradient-btn flex items-center gap-1.5">
+        <button onClick={() => { setEditingJar(null); setForm(emptyForm()); setShowModal(true); }} className="gradient-btn flex items-center gap-1.5">
           <Plus size={16} /> Novo Cofrinho
         </button>
       </div>
@@ -302,7 +344,7 @@ export default function Cofrinhos() {
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
         {savingsJars.map((jar) => (
           <div key={jar.id} className="group">
-            <JarCard jar={jar} />
+            <JarCard jar={jar} onEdit={openEdit} />
           </div>
         ))}
         {savingsJars.length === 0 && (
@@ -315,9 +357,11 @@ export default function Cofrinhos() {
 
       {/* Modal */}
       {showModal && (
-        <div className="modal-overlay" onClick={() => setShowModal(false)}>
+        <div className="modal-overlay" onClick={closeModal}>
           <div className="modal-panel" onClick={(e) => e.stopPropagation()}>
-            <h3 className="font-display text-xl font-semibold text-gray-800 mb-5">Novo Cofrinho</h3>
+            <h3 className="font-display text-xl font-semibold text-gray-800 mb-5">
+              {editingJar ? 'Editar Cofrinho' : 'Novo Cofrinho'}
+            </h3>
             <div className="space-y-4">
               <div>
                 <label className="form-label">Nome</label>
@@ -358,11 +402,13 @@ export default function Cofrinhos() {
                   <input type="number" className="input-field" placeholder="0,00" value={form.targetValue || ''}
                     onChange={(e) => setForm({ ...form, targetValue: parseFloat(e.target.value) || 0 })} />
                 </div>
-                <div>
-                  <label className="form-label">Valor Atual (R$)</label>
-                  <input type="number" className="input-field" placeholder="0,00" value={form.currentValue || ''}
-                    onChange={(e) => setForm({ ...form, currentValue: parseFloat(e.target.value) || 0 })} />
-                </div>
+                {!editingJar && (
+                  <div>
+                    <label className="form-label">Valor Atual (R$)</label>
+                    <input type="number" className="input-field" placeholder="0,00" value={form.currentValue || ''}
+                      onChange={(e) => setForm({ ...form, currentValue: parseFloat(e.target.value) || 0 })} />
+                  </div>
+                )}
               </div>
 
               <div>
@@ -396,8 +442,10 @@ export default function Cofrinhos() {
               </div>
 
               <div className="flex gap-3 pt-2">
-                <button className="gradient-btn flex-1" onClick={handleAdd}>Criar Cofrinho</button>
-                <button className="btn-outline flex-1" onClick={() => setShowModal(false)}>Cancelar</button>
+                <button className="gradient-btn flex-1" onClick={handleSave}>
+                  {editingJar ? 'Salvar' : 'Criar Cofrinho'}
+                </button>
+                <button className="btn-outline flex-1" onClick={closeModal}>Cancelar</button>
               </div>
             </div>
           </div>
