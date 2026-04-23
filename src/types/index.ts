@@ -18,7 +18,8 @@ export interface Transaction {
   date: string; // ISO date string
   person: Person;
   paymentMethod?: PaymentMethod;
-  savingsJarId?: string; // links transaction to a cofrinho contribution
+  savingsJarId?: string;
+  creditCardId?: string;
 }
 
 export type FixedExpenseCategory =

@@ -17,6 +17,7 @@ const txToDb = (t: Transaction) => ({
   date: t.date, person: t.person,
   payment_method: t.paymentMethod ?? null,
   savings_jar_id: t.savingsJarId ?? null,
+  credit_card_id: t.creditCardId ?? null,
 });
 const txFromDb = (r: any): Transaction => ({
   id: r.id, type: r.type, category: r.category,
@@ -24,6 +25,7 @@ const txFromDb = (r: any): Transaction => ({
   date: r.date, person: r.person,
   paymentMethod: r.payment_method ?? undefined,
   savingsJarId: r.savings_jar_id ?? undefined,
+  creditCardId: r.credit_card_id ?? undefined,
 });
 
 const fxToDb = (f: FixedExpense) => ({
@@ -109,6 +111,8 @@ export const txDB = {
   },
   insert: (t: Transaction) =>
     supabase.from('transactions').insert(txToDb(t)),
+  update: (t: Transaction) =>
+    supabase.from('transactions').update(txToDb(t)).eq('id', t.id),
   delete: (id: string) =>
     supabase.from('transactions').delete().eq('id', id),
 };
