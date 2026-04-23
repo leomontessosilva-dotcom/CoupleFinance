@@ -101,7 +101,7 @@ export default function Transactions() {
     <div className="animate-fade-in" style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
 
       {/* Summary cards */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12 }}>
+      <div className="tx-summary-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12 }}>
         <div className="stat-card">
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
             <div style={{ width: 36, height: 36, borderRadius: 10, background: '#DCFCE7', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
@@ -165,7 +165,7 @@ export default function Transactions() {
               style={{ paddingLeft: '2.2rem' }} value={search}
               onChange={(e) => setSearch(e.target.value)} />
           </div>
-          <button onClick={exportCSV} className="btn-outline" style={{ display: 'flex', alignItems: 'center', gap: 5, whiteSpace: 'nowrap' }}>
+          <button onClick={exportCSV} className="btn-outline hide-on-mobile" style={{ display: 'flex', alignItems: 'center', gap: 5, whiteSpace: 'nowrap' }}>
             <Download size={13} /> Exportar
           </button>
           <button onClick={() => { setForm(emptyForm()); setShowModal(true); }} className="gradient-btn" style={{ whiteSpace: 'nowrap' }}>
@@ -200,9 +200,17 @@ export default function Transactions() {
         </div>
       </div>
 
-      {/* Table */}
+      {/* Transaction list */}
       <div className="surface" style={{ overflow: 'hidden' }}>
-        <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
+
+        {filtered.length === 0 && (
+          <p style={{ textAlign: 'center', padding: '48px 16px', color: 'var(--text-3)', fontSize: 13 }}>
+            Nenhuma transação encontrada
+          </p>
+        )}
+
+        {/* ── Desktop table ── */}
+        <div className="hide-on-mobile" style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 560 }}>
             <thead>
               <tr style={{ borderBottom: '1px solid var(--border)', background: 'var(--surface-2)' }}>
@@ -216,13 +224,6 @@ export default function Transactions() {
               </tr>
             </thead>
             <tbody>
-              {filtered.length === 0 && (
-                <tr>
-                  <td colSpan={7} style={{ textAlign: 'center', padding: '48px 16px', color: 'var(--text-3)', fontSize: 13 }}>
-                    Nenhuma transação encontrada
-                  </td>
-                </tr>
-              )}
               {filtered.map((tx) => (
                 <tr key={tx.id} style={{ borderBottom: '1px solid var(--border)' }}
                   onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(0,0,0,0.012)')}
@@ -286,6 +287,41 @@ export default function Transactions() {
             </tbody>
           </table>
         </div>
+
+        {/* ── Mobile card list ── */}
+        <div className="show-on-mobile">
+          {filtered.map((tx) => (
+            <div key={tx.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 16px', borderBottom: '1px solid var(--border)' }}>
+              <div style={{ width: 36, height: 36, borderRadius: 10, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: `${categoryColors[tx.category] || '#9ca3af'}15` }}>
+                <span style={{ fontSize: 13, fontWeight: 700, color: categoryColors[tx.category] || '#9ca3af' }}>
+                  {tx.category.charAt(0)}
+                </span>
+              </div>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <p style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-1)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {tx.description}
+                </p>
+                <p style={{ fontSize: 10.5, color: 'var(--text-3)', marginTop: 2 }}>
+                  {formatDate(tx.date)} · {tx.category}
+                  {tx.person !== 'Casal' && ` · ${tx.person === 'Leonardo' ? 'Leo' : 'Serena'}`}
+                </p>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+                <span style={{ fontFamily: 'Fraunces, serif', fontSize: 14, fontWeight: 400, letterSpacing: '-0.01em', color: tx.type === 'income' ? 'var(--green)' : 'var(--red)' }}>
+                  {tx.type === 'income' ? '+' : '−'}{formatCurrency(tx.amount)}
+                </span>
+                <button onClick={() => deleteTransaction(tx.id)}
+                  style={{ width: 28, height: 28, borderRadius: 7, border: 'none', cursor: 'pointer', background: 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                  onTouchStart={(e) => (e.currentTarget.style.background = '#FEE2E2')}
+                  onTouchEnd={(e) => (e.currentTarget.style.background = 'transparent')}
+                >
+                  <Trash2 size={13} color="#f87171" />
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+
       </div>
 
       {/* Add modal — portal so position:fixed is relative to viewport, not page */}

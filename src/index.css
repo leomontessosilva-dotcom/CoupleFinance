@@ -511,10 +511,17 @@
 
   /* Profile header stats */
   .profile-stats-row { gap: 12px !important; flex-wrap: wrap !important; }
+
+  /* Transactions page */
+  .tx-summary-grid { grid-template-columns: 1fr !important; }
+  .hide-on-mobile  { display: none !important; }
+  .show-on-mobile  { display: block !important; }
+  .stat-card { padding: 14px 16px !important; }
 }
 
 @media (min-width: 769px) {
-  .mobile-only { display: none !important; }
+  .mobile-only    { display: none !important; }
+  .show-on-mobile { display: none !important; }
 }
 
 /* ─── Mobile bottom nav ─────────────────────────────────────── */

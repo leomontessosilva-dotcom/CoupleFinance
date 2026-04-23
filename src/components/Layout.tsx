@@ -5,7 +5,7 @@ import MobileNav from './MobileNav';
 
 export default function Layout({ children }: { children: ReactNode }) {
   return (
-    <div style={{ minHeight: '100vh', background: 'var(--bg)' }}>
+    <div style={{ minHeight: '100vh', background: 'var(--bg)', overflowX: 'hidden' }}>
       <Sidebar />
       <TopBar />
       <main
