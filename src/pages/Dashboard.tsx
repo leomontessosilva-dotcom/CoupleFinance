@@ -3,13 +3,13 @@ import {
   AreaChart, Area, XAxis, YAxis, Tooltip,
   ResponsiveContainer, CartesianGrid,
 } from 'recharts';
-import { ArrowUpRight, ArrowDownRight, TrendingUp, CreditCard, Plus } from 'lucide-react';
+import { ArrowUpRight, ArrowDownRight, TrendingUp, CreditCard, Plus, Pencil } from 'lucide-react';
 import { useStore } from '../store/useStore';
 import {
   formatCurrency, formatShortDate, isInMonth,
   categoryColors, formatMonthShort, prevMonth, generateId,
 } from '../utils/format';
-import type { Person } from '../types';
+import type { CreditCard as CreditCardType, Person } from '../types';
 
 /* ── Premium Chart Tooltip ───────────────────────────────── */
 const ChartTooltip = ({ active, payload, label }: any) => {
@@ -43,34 +43,67 @@ const ChartTooltip = ({ active, payload, label }: any) => {
 
 /* ── Main Dashboard ──────────────────────────────────────── */
 export default function Dashboard() {
-  const { transactions, fixedExpenses, investments, savingsJars, currentMonth, creditCards, addCreditCard } = useStore();
+  const { transactions, fixedExpenses, investments, savingsJars, currentMonth, creditCards, addCreditCard, updateCreditCard, salaries } = useStore();
   const [showCCModal, setShowCCModal] = useState(false);
+  const [editingCard, setEditingCard] = useState<CreditCardType | null>(null);
   const [ccForm, setCcForm] = useState({ name: '', limit: '', person: 'Casal', color: '#6D28D9' });
+
+  const openAddCC = () => {
+    setEditingCard(null);
+    setCcForm({ name: '', limit: '', person: 'Casal', color: '#6D28D9' });
+    setShowCCModal(true);
+  };
+
+  const openEditCC = (card: CreditCardType) => {
+    setEditingCard(card);
+    setCcForm({ name: card.name, limit: String(card.limit), person: card.person, color: card.color });
+    setShowCCModal(true);
+  };
+
+  const saveCC = () => {
+    if (!ccForm.name) return;
+    if (editingCard) {
+      updateCreditCard({ ...editingCard, name: ccForm.name, limit: Number(ccForm.limit) || 0, person: ccForm.person as Person, color: ccForm.color });
+    } else {
+      addCreditCard({ id: generateId(), name: ccForm.name, limit: Number(ccForm.limit) || 0, person: ccForm.person as Person, color: ccForm.color });
+    }
+    setShowCCModal(false);
+    setEditingCard(null);
+    setCcForm({ name: '', limit: '', person: 'Casal', color: '#6D28D9' });
+  };
 
   /* Month-level aggregates */
   const m = useMemo(() => {
-    const tx       = transactions.filter((t) => isInMonth(t.date, currentMonth));
-    const income   = tx.filter((t) => t.type === 'income').reduce((s, t) => s + t.amount, 0);
-    const expenses = tx.filter((t) => t.type === 'expense').reduce((s, t) => s + t.amount, 0);
-    const fixed    = fixedExpenses.filter((f) => f.active).reduce((s, f) => s + f.amount, 0);
-    const balance  = income - expenses;
-    const rate     = income > 0 ? (balance / income) * 100 : 0;
-    const invested = investments.reduce((s, i) => s + i.currentValue, 0);
-    const jars     = savingsJars.reduce((s, j) => s + j.currentValue, 0);
-    const net      = invested + jars + Math.max(0, balance);
+    const tx           = transactions.filter((t) => isInMonth(t.date, currentMonth));
+    const salaryIncome = salaries.Leonardo + salaries.Serena;
+    const txIncome     = tx.filter((t) => t.type === 'income').reduce((s, t) => s + t.amount, 0);
+    const income       = salaryIncome + txIncome;
+    const fixed        = fixedExpenses.filter((f) => f.active).reduce((s, f) => s + f.amount, 0);
+    const txExpenses   = tx.filter((t) => t.type === 'expense').reduce((s, t) => s + t.amount, 0);
+    const expenses     = fixed + txExpenses;
+    const balance      = income - expenses;
+    const rate         = income > 0 ? (balance / income) * 100 : 0;
+    const invested     = investments.reduce((s, i) => s + i.currentValue, 0);
+    const jars         = savingsJars.reduce((s, j) => s + j.currentValue, 0);
+    const net          = invested + jars + Math.max(0, balance);
 
-    // 0-100: savings rate (40pt) + fixed ratio (30pt) + investment wealth (30pt)
+    // Health score: savings rate (40pt) + fixed ratio (30pt) + investment wealth (30pt)
     let score = 0;
     if (rate >= 30) score += 40; else if (rate >= 20) score += 30; else if (rate >= 10) score += 20; else if (rate > 0) score += 10;
     if (income > 0) { const fr = fixed / income; if (fr < 0.3) score += 30; else if (fr < 0.4) score += 22; else if (fr < 0.5) score += 15; else if (fr < 0.7) score += 7; }
     if (income > 0) { if (invested > income * 6) score += 30; else if (invested > income * 3) score += 22; else if (invested > income) score += 15; else if (invested > 0) score += 7; }
 
+    // Per-card spending from linked creditCardId
+    const perCardSpending: Record<string, number> = {};
+    tx.filter((t) => t.type === 'expense' && t.creditCardId).forEach((t) => {
+      perCardSpending[t.creditCardId!] = (perCardSpending[t.creditCardId!] || 0) + t.amount;
+    });
     const ccSpending = tx
       .filter((t) => t.type === 'expense' && t.paymentMethod === 'credito')
       .reduce((s, t) => s + t.amount, 0);
 
-    return { income, expenses, fixed, balance, rate, invested, jars, net, score: Math.min(100, score), ccSpending };
-  }, [transactions, fixedExpenses, investments, savingsJars, currentMonth]);
+    return { income, salaryIncome, txIncome, expenses, fixed, txExpenses, balance, rate, invested, jars, net, score: Math.min(100, score), ccSpending, perCardSpending };
+  }, [transactions, fixedExpenses, investments, savingsJars, currentMonth, salaries]);
 
   /* 6-month chart */
   const chartData = useMemo(() => {
@@ -80,15 +113,16 @@ export default function Dashboard() {
       for (let j = 0; j < i; j++) c = prevMonth(c);
       months.push(c);
     }
+    const fixedTotal = fixedExpenses.filter((f) => f.active).reduce((s, f) => s + f.amount, 0);
     return months.map((mon) => {
       const tx = transactions.filter((t) => isInMonth(t.date, mon));
       return {
         name: formatMonthShort(mon),
-        Receitas: tx.filter((t) => t.type === 'income').reduce((s, t) => s + t.amount, 0),
-        Despesas: tx.filter((t) => t.type === 'expense').reduce((s, t) => s + t.amount, 0),
+        Receitas: (salaries.Leonardo + salaries.Serena) + tx.filter((t) => t.type === 'income').reduce((s, t) => s + t.amount, 0),
+        Despesas: fixedTotal + tx.filter((t) => t.type === 'expense').reduce((s, t) => s + t.amount, 0),
       };
     });
-  }, [transactions, currentMonth]);
+  }, [transactions, fixedExpenses, currentMonth, salaries]);
 
   /* Recent transactions */
   const recentTx = useMemo(() =>
@@ -119,7 +153,6 @@ export default function Dashboard() {
         className="animate-in surface"
         style={{ padding: '32px 36px 0', overflow: 'hidden', position: 'relative' }}
       >
-        {/* Decorative gradient wash — very subtle */}
         <div style={{
           position: 'absolute', top: -80, right: -80,
           width: 400, height: 400,
@@ -133,7 +166,7 @@ export default function Dashboard() {
           pointerEvents: 'none',
         }} />
 
-        {/* Hero row: big number + score ring */}
+        {/* Hero row */}
         <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', position: 'relative' }}>
           <div>
             <p className="eyebrow" style={{ marginBottom: 10 }}>Patrimônio do Casal</p>
@@ -175,12 +208,12 @@ export default function Dashboard() {
         {/* Stat chips row */}
         <div className="stat-chips-row" style={{ display: 'flex', marginTop: 28, borderTop: '1px solid var(--border)', position: 'relative' }}>
           {[
-            { label: 'Receitas do Mês',   value: formatCurrency(m.income),   indicator: 'up',   color: 'var(--green)' },
-            { label: 'Despesas do Mês',   value: formatCurrency(m.expenses), indicator: 'down', color: 'var(--red)' },
-            { label: 'Saldo',             value: formatCurrency(m.balance),  indicator: m.balance >= 0 ? 'up' : 'down', color: m.balance >= 0 ? 'var(--green)' : 'var(--red)' },
-            { label: 'Taxa de Poupança',  value: `${m.rate.toFixed(1)}%`,    indicator: m.rate >= 20 ? 'up' : 'down', color: m.rate >= 20 ? 'var(--green)' : m.rate >= 10 ? 'var(--amber)' : 'var(--red)' },
-            { label: 'Gastos Fixos',      value: formatCurrency(m.fixed),    indicator: null,   color: 'var(--text-2)' },
-            { label: 'Total Investido',   value: formatCurrency(m.invested), indicator: 'up',   color: 'var(--accent)' },
+            { label: 'Receitas do Mês',  value: formatCurrency(m.income),   sub: m.salaryIncome > 0 ? `Salário: ${formatCurrency(m.salaryIncome)}` : undefined, indicator: 'up',   color: 'var(--green)' },
+            { label: 'Despesas do Mês',  value: formatCurrency(m.expenses),  sub: m.fixed > 0 ? `Fixos: ${formatCurrency(m.fixed)}` : undefined, indicator: 'down', color: 'var(--red)' },
+            { label: 'Saldo',            value: formatCurrency(m.balance),   sub: undefined, indicator: m.balance >= 0 ? 'up' : 'down', color: m.balance >= 0 ? 'var(--green)' : 'var(--red)' },
+            { label: 'Taxa de Poupança', value: `${m.rate.toFixed(1)}%`,     sub: undefined, indicator: m.rate >= 20 ? 'up' : 'down', color: m.rate >= 20 ? 'var(--green)' : m.rate >= 10 ? 'var(--amber)' : 'var(--red)' },
+            { label: 'Gastos Fixos',     value: formatCurrency(m.fixed),     sub: undefined, indicator: null, color: 'var(--text-2)' },
+            { label: 'Total Investido',  value: formatCurrency(m.invested),  sub: undefined, indicator: 'up', color: 'var(--accent)' },
           ].map((s, i) => (
             <div key={i} className="stat-chip" style={{ flex: 1 }}>
               <p className="eyebrow" style={{ marginBottom: 5 }}>{s.label}</p>
@@ -191,6 +224,9 @@ export default function Dashboard() {
                 {s.indicator === 'up' && <ArrowUpRight size={13} color="var(--green)" />}
                 {s.indicator === 'down' && <ArrowDownRight size={13} color="var(--red)" />}
               </div>
+              {s.sub && (
+                <p style={{ fontSize: 10, color: 'var(--text-3)', marginTop: 2 }}>{s.sub}</p>
+              )}
             </div>
           ))}
         </div>
@@ -199,14 +235,13 @@ export default function Dashboard() {
       {/* ══ ZONE 2: Chart + Right Rail ══════════════════════════════════ */}
       <div className="animate-in-1 zone-grid-2" style={{ display: 'grid', gridTemplateColumns: '1fr 280px', gap: 18 }}>
 
-        {/* Main chart — 6-month income vs expenses */}
+        {/* Main chart */}
         <div className="surface" style={{ padding: '24px 24px 16px', position: 'relative' }}>
-          {/* Chart header */}
           <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 24 }}>
             <div>
               <p className="section-title">Receitas vs Despesas</p>
               <p style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 3 }}>
-                Últimos 6 meses
+                Últimos 6 meses · inclui salários e gastos fixos
               </p>
             </div>
             <div style={{ display: 'flex', gap: 16, alignItems: 'center' }}>
@@ -233,47 +268,18 @@ export default function Dashboard() {
                   <stop offset="100%" stopColor="#D5197A" stopOpacity={0} />
                 </linearGradient>
               </defs>
-
               <CartesianGrid vertical={false} stroke="#F0F0F4" />
-
-              <XAxis
-                dataKey="name"
-                axisLine={false}
-                tickLine={false}
-                tick={{ fontSize: 10.5, fill: '#9898A8', fontFamily: 'Plus Jakarta Sans' }}
-                dy={8}
-              />
-              <YAxis
-                axisLine={false}
-                tickLine={false}
+              <XAxis dataKey="name" axisLine={false} tickLine={false}
+                tick={{ fontSize: 10.5, fill: '#9898A8', fontFamily: 'Plus Jakarta Sans' }} dy={8} />
+              <YAxis axisLine={false} tickLine={false}
                 tick={{ fontSize: 10, fill: '#9898A8', fontFamily: 'Plus Jakarta Sans' }}
-                tickFormatter={(v) => `${(v / 1000).toFixed(0)}k`}
-                width={32}
-              />
-
-              <Tooltip
-                content={<ChartTooltip />}
-                cursor={{ stroke: 'var(--border-strong)', strokeWidth: 1, strokeDasharray: '4 4' }}
-              />
-
-              <Area
-                type="monotone"
-                dataKey="Receitas"
-                stroke="#6D28D9"
-                strokeWidth={2}
-                fill="url(#gInc)"
-                dot={false}
-                activeDot={{ r: 4, fill: '#6D28D9', stroke: 'white', strokeWidth: 2 }}
-              />
-              <Area
-                type="monotone"
-                dataKey="Despesas"
-                stroke="#D5197A"
-                strokeWidth={2}
-                fill="url(#gExp)"
-                dot={false}
-                activeDot={{ r: 4, fill: '#D5197A', stroke: 'white', strokeWidth: 2 }}
-              />
+                tickFormatter={(v) => `${(v / 1000).toFixed(0)}k`} width={32} />
+              <Tooltip content={<ChartTooltip />}
+                cursor={{ stroke: 'var(--border-strong)', strokeWidth: 1, strokeDasharray: '4 4' }} />
+              <Area type="monotone" dataKey="Receitas" stroke="#6D28D9" strokeWidth={2} fill="url(#gInc)"
+                dot={false} activeDot={{ r: 4, fill: '#6D28D9', stroke: 'white', strokeWidth: 2 }} />
+              <Area type="monotone" dataKey="Despesas" stroke="#D5197A" strokeWidth={2} fill="url(#gExp)"
+                dot={false} activeDot={{ r: 4, fill: '#D5197A', stroke: 'white', strokeWidth: 2 }} />
             </AreaChart>
           </ResponsiveContainer>
         </div>
@@ -297,24 +303,14 @@ export default function Dashboard() {
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
                 {upcomingBills.map((bill) => (
-                  <div
-                    key={bill.id}
-                    style={{
-                      display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                      padding: '8px 8px', borderRadius: 8, transition: 'background 100ms', cursor: 'default',
-                    }}
+                  <div key={bill.id}
+                    style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 8px', borderRadius: 8, transition: 'background 100ms', cursor: 'default' }}
                     onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--surface-2)')}
                     onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
                   >
                     <div style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
-                      <div style={{
-                        width: 28, height: 28, borderRadius: 7,
-                        background: 'rgba(109,40,217,0.07)',
-                        display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
-                      }}>
-                        <span style={{ fontSize: 10.5, fontWeight: 700, color: 'var(--accent)', fontFamily: 'Fraunces, serif' }}>
-                          {bill.dueDay}
-                        </span>
+                      <div style={{ width: 28, height: 28, borderRadius: 7, background: 'rgba(109,40,217,0.07)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                        <span style={{ fontSize: 10.5, fontWeight: 700, color: 'var(--accent)', fontFamily: 'Fraunces, serif' }}>{bill.dueDay}</span>
                       </div>
                       <div>
                         <p style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-1)' }}>{bill.name}</p>
@@ -339,30 +335,26 @@ export default function Dashboard() {
             )}
           </div>
 
-          {/* Credit cards — compact */}
+          {/* Credit cards */}
           <div className="surface" style={{ padding: '20px 18px' }}>
             <div className="sec-hdr" style={{ marginBottom: creditCards.length > 0 ? 16 : 0 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                 <CreditCard size={14} color="var(--text-3)" />
                 <p className="section-title">Cartões</p>
               </div>
-              <button className="btn-ghost btn-sm" style={{ padding: '4px 8px' }} onClick={() => setShowCCModal(true)}>
+              <button className="btn-ghost btn-sm" style={{ padding: '4px 8px' }} onClick={openAddCC}>
                 <Plus size={12} />
               </button>
             </div>
 
             {creditCards.length === 0 ? (
-              <button
-                className="btn-secondary btn-sm"
-                style={{ width: '100%', justifyContent: 'center', marginTop: 4 }}
-                onClick={() => setShowCCModal(true)}
-              >
+              <button className="btn-secondary btn-sm" style={{ width: '100%', justifyContent: 'center', marginTop: 4 }} onClick={openAddCC}>
                 <Plus size={12} /> Adicionar cartão
               </button>
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
                 {creditCards.map((card) => {
-                  const spending = m.ccSpending;
+                  const spending = m.perCardSpending[card.id] || 0;
                   const pct = card.limit > 0 ? Math.min(100, (spending / card.limit) * 100) : 0;
                   const isOver = card.limit > 0 && spending > card.limit;
                   const barColor = isOver ? 'var(--red)' : pct > 80 ? 'var(--amber)' : card.color;
@@ -376,13 +368,20 @@ export default function Dashboard() {
                             <p style={{ fontSize: 10, color: 'var(--text-3)' }}>{card.person}</p>
                           </div>
                         </div>
-                        <div style={{ textAlign: 'right' }}>
-                          <span style={{ fontFamily: 'Fraunces, serif', fontSize: 13, color: isOver ? 'var(--red)' : 'var(--text-1)' }}>
-                            {formatCurrency(spending)}
-                          </span>
-                          {card.limit > 0 && (
-                            <p style={{ fontSize: 9.5, color: 'var(--text-3)', marginTop: 1 }}>/ {formatCurrency(card.limit)}</p>
-                          )}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                          <div style={{ textAlign: 'right' }}>
+                            <span style={{ fontFamily: 'Fraunces, serif', fontSize: 13, color: isOver ? 'var(--red)' : 'var(--text-1)' }}>
+                              {formatCurrency(spending)}
+                            </span>
+                            {card.limit > 0 && (
+                              <p style={{ fontSize: 9.5, color: 'var(--text-3)', marginTop: 1 }}>/ {formatCurrency(card.limit)}</p>
+                            )}
+                          </div>
+                          <button onClick={() => openEditCC(card)}
+                            style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4, color: 'var(--text-3)', display: 'flex', alignItems: 'center' }}
+                            title="Editar cartão">
+                            <Pencil size={11} />
+                          </button>
                         </div>
                       </div>
                       {card.limit > 0 && (
@@ -435,11 +434,7 @@ export default function Dashboard() {
                   <tr key={tx.id}>
                     <td style={{ paddingLeft: 24 }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                        <div style={{
-                          width: 26, height: 26, borderRadius: 7, flexShrink: 0,
-                          background: `${categoryColors[tx.category] || '#9898A8'}15`,
-                          display: 'flex', alignItems: 'center', justifyContent: 'center',
-                        }}>
+                        <div style={{ width: 26, height: 26, borderRadius: 7, flexShrink: 0, background: `${categoryColors[tx.category] || '#9898A8'}15`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                           <span style={{ fontSize: 11, fontWeight: 700, color: categoryColors[tx.category] || '#9898A8' }}>
                             {tx.category.charAt(0)}
                           </span>
@@ -463,13 +458,7 @@ export default function Dashboard() {
                       </span>
                     </td>
                     <td style={{ textAlign: 'right', paddingRight: 24 }}>
-                      <span style={{
-                        fontFamily: 'Fraunces, serif',
-                        fontSize: 13,
-                        fontWeight: 400,
-                        letterSpacing: '-0.01em',
-                        color: tx.type === 'income' ? 'var(--green)' : 'var(--red)',
-                      }}>
+                      <span style={{ fontFamily: 'Fraunces, serif', fontSize: 13, fontWeight: 400, letterSpacing: '-0.01em', color: tx.type === 'income' ? 'var(--green)' : 'var(--red)' }}>
                         {tx.type === 'income' ? '+' : '−'}{formatCurrency(tx.amount)}
                       </span>
                     </td>
@@ -501,10 +490,7 @@ export default function Dashboard() {
               {topJars.map((jar) => {
                 const pct       = Math.min(100, (jar.currentValue / jar.targetValue) * 100);
                 const remaining = jar.targetValue - jar.currentValue;
-                const months    = jar.monthlyContribution > 0
-                  ? Math.ceil(remaining / jar.monthlyContribution)
-                  : null;
-
+                const months    = jar.monthlyContribution > 0 ? Math.ceil(remaining / jar.monthlyContribution) : null;
                 return (
                   <div key={jar.id}>
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
@@ -525,18 +511,12 @@ export default function Dashboard() {
                         {pct.toFixed(0)}%
                       </span>
                     </div>
-
                     <div className="pbar pbar-lg">
                       <div className="pbar-fill" style={{ width: `${pct}%`, background: jar.color }} />
                     </div>
-
                     <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 5 }}>
-                      <span style={{ fontSize: 10.5, color: 'var(--text-3)', fontFamily: 'Fraunces, serif' }}>
-                        {formatCurrency(jar.currentValue)}
-                      </span>
-                      <span style={{ fontSize: 10.5, color: 'var(--text-3)', fontFamily: 'Fraunces, serif' }}>
-                        {formatCurrency(jar.targetValue)}
-                      </span>
+                      <span style={{ fontSize: 10.5, color: 'var(--text-3)', fontFamily: 'Fraunces, serif' }}>{formatCurrency(jar.currentValue)}</span>
+                      <span style={{ fontSize: 10.5, color: 'var(--text-3)', fontFamily: 'Fraunces, serif' }}>{formatCurrency(jar.targetValue)}</span>
                     </div>
                   </div>
                 );
@@ -546,29 +526,29 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {/* ══ Add CC Modal ════════════════════════════════════════════════ */}
+      {/* ══ Add / Edit CC Modal ════════════════════════════════════════════════ */}
       {showCCModal && (
         <div className="modal-overlay" onClick={() => setShowCCModal(false)}>
           <div className="modal-panel" onClick={e => e.stopPropagation()}>
             <h3 style={{ fontFamily: 'Fraunces, serif', fontSize: '1.2rem', fontWeight: 300, marginBottom: 20, color: 'var(--text-1)', letterSpacing: '-0.02em' }}>
-              Novo Cartão de Crédito
+              {editingCard ? 'Editar Cartão' : 'Novo Cartão de Crédito'}
             </h3>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
               <div>
                 <label className="f-label">Nome do cartão</label>
                 <input className="input" placeholder="Ex: Nubank Leo" value={ccForm.name}
-                  onChange={e => setCcForm({...ccForm, name: e.target.value})} />
+                  onChange={e => setCcForm({ ...ccForm, name: e.target.value })} />
               </div>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
                 <div>
                   <label className="f-label">Limite (R$)</label>
                   <input type="number" className="input" placeholder="0,00" value={ccForm.limit}
-                    onChange={e => setCcForm({...ccForm, limit: e.target.value})} />
+                    onChange={e => setCcForm({ ...ccForm, limit: e.target.value })} />
                 </div>
                 <div>
                   <label className="f-label">Responsável</label>
                   <select className="input" value={ccForm.person}
-                    onChange={e => setCcForm({...ccForm, person: e.target.value})}>
+                    onChange={e => setCcForm({ ...ccForm, person: e.target.value })}>
                     <option>Leonardo</option>
                     <option>Serena</option>
                     <option>Casal</option>
@@ -579,27 +559,16 @@ export default function Dashboard() {
                 <label className="f-label">Cor</label>
                 <div style={{ display: 'flex', gap: 8 }}>
                   {['#6D28D9', '#D5197A', '#047857', '#B45309', '#1D4ED8', '#DC2626'].map(c => (
-                    <div key={c} onClick={() => setCcForm({...ccForm, color: c})}
-                      style={{
-                        width: 22, height: 22, borderRadius: '50%', background: c, cursor: 'pointer',
-                        boxShadow: ccForm.color === c ? `0 0 0 2px white, 0 0 0 3px ${c}` : 'none',
-                        transition: 'box-shadow 100ms',
-                      }} />
+                    <div key={c} onClick={() => setCcForm({ ...ccForm, color: c })}
+                      style={{ width: 22, height: 22, borderRadius: '50%', background: c, cursor: 'pointer', boxShadow: ccForm.color === c ? `0 0 0 2px white, 0 0 0 3px ${c}` : 'none', transition: 'box-shadow 100ms' }} />
                   ))}
                 </div>
               </div>
               <div style={{ display: 'flex', gap: 8, paddingTop: 4 }}>
-                <button className="btn-primary" style={{ flex: 1, justifyContent: 'center' }}
-                  onClick={() => {
-                    if (!ccForm.name) return;
-                    addCreditCard({ id: generateId(), name: ccForm.name, limit: Number(ccForm.limit) || 0, person: ccForm.person as Person, color: ccForm.color });
-                    setShowCCModal(false);
-                    setCcForm({ name: '', limit: '', person: 'Casal', color: '#6D28D9' });
-                  }}>
+                <button className="btn-primary" style={{ flex: 1, justifyContent: 'center' }} onClick={saveCC}>
                   Salvar
                 </button>
-                <button className="btn-secondary" style={{ flex: 1, justifyContent: 'center' }}
-                  onClick={() => setShowCCModal(false)}>
+                <button className="btn-secondary" style={{ flex: 1, justifyContent: 'center' }} onClick={() => setShowCCModal(false)}>
                   Cancelar
                 </button>
               </div>

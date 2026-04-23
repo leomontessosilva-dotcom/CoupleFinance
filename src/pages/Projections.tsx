@@ -79,7 +79,7 @@ const ChartTooltip = ({ active, payload, label }: any) => {
 
 /* ── Main Page ────────────────────────────────────────────── */
 export default function Projections() {
-  const { savingsJars, transactions, currentMonth } = useStore();
+  const { savingsJars, transactions, currentMonth, salaries, fixedExpenses } = useStore();
   const [horizon, setHorizon] = useState<6 | 12 | 24 | 36>(12);
 
   const jarsWithYield = savingsJars.filter((j) => j.yieldRate && j.yieldRate > 0);
@@ -149,6 +149,34 @@ export default function Projections() {
   const totalContrib  = summary.reduce((s, r) => s + r.totalContrib, 0);
 
   const COLORS = ['#6D28D9', '#D5197A', '#047857', '#B45309', '#1D4ED8', '#DC2626', '#8B5CF6', '#10B981'];
+
+  // Cash flow projection: salary + jar yields vs fixed expenses
+  const monthlyIncome = salaries.Leonardo + salaries.Serena;
+  const monthlyFixed = fixedExpenses.filter((f) => f.active).reduce((s, f) => s + f.amount, 0);
+  const monthlyJarContribs = savingsJars.reduce((s, j) => s + j.monthlyContribution, 0);
+  const monthlyCashFlow = monthlyIncome - monthlyFixed - monthlyJarContribs;
+
+  const cashFlowData = useMemo(() => {
+    const data: { month: string; Entradas: number; Saídas: number; Saldo: number }[] = [];
+    let accumulated = 0;
+    for (let m = 1; m <= horizon; m++) {
+      const d = new Date();
+      d.setMonth(d.getMonth() + m);
+      const label = d.toLocaleDateString('pt-BR', { month: 'short', year: '2-digit' });
+      // Yield income from jars
+      const jarYields = savingsJars.reduce((s, jar) => {
+        if (!jar.yieldRate || jar.yieldRate <= 0) return s;
+        const r = toMonthlyRate(jar.yieldRate, jar.yieldPeriod ?? 'mensal');
+        const fvPrev = jarFutureValue(jar, m - 1);
+        return s + fvPrev * r;
+      }, 0);
+      const inflow = monthlyIncome + jarYields;
+      const outflow = monthlyFixed + monthlyJarContribs;
+      accumulated += inflow - outflow;
+      data.push({ month: label, Entradas: Math.round(inflow), Saídas: Math.round(outflow), Saldo: Math.round(accumulated) });
+    }
+    return data;
+  }, [horizon, savingsJars, monthlyIncome, monthlyFixed, monthlyJarContribs]);
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }} className="animate-fade-in">
@@ -416,6 +444,66 @@ export default function Projections() {
               A projeção acima já considera o saldo atual de cada cofrinho. Meses com déficit reduzem a
               base de partida, meses com superávit compensam automaticamente.
             </p>
+          </div>
+        </div>
+      )}
+
+      {/* Cash flow projection */}
+      {(monthlyIncome > 0 || monthlyFixed > 0) && (
+        <div className="surface" style={{ overflow: 'hidden' }}>
+          <div style={{ padding: '20px 24px 0' }}>
+            <p className="section-title">Projeção de Caixa</p>
+            <p style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 3, marginBottom: 16 }}>
+              Baseado em salários, gastos fixos e aportes mensais
+            </p>
+          </div>
+
+          {/* Summary strip */}
+          <div style={{ display: 'flex', borderTop: '1px solid var(--border)', borderBottom: '1px solid var(--border)' }}>
+            {[
+              { label: 'Entradas Mensais', value: formatCurrency(monthlyIncome), color: 'var(--green)', sub: 'Salários' },
+              { label: 'Saídas Mensais', value: formatCurrency(monthlyFixed + monthlyJarContribs), color: 'var(--red)', sub: `Fixos + Aportes` },
+              { label: 'Fluxo Líquido/mês', value: formatCurrency(monthlyCashFlow), color: monthlyCashFlow >= 0 ? 'var(--accent)' : 'var(--red)', sub: monthlyCashFlow >= 0 ? 'Sobra livre' : 'Déficit' },
+              { label: `Saldo em ${horizon} meses`, value: formatCurrency(cashFlowData[cashFlowData.length - 1]?.Saldo ?? 0), color: 'var(--accent)', sub: 'Acumulado livre' },
+            ].map((s, i) => (
+              <div key={i} className="stat-chip" style={{ flex: 1 }}>
+                <p className="eyebrow" style={{ marginBottom: 5 }}>{s.label}</p>
+                <p style={{ fontFamily: 'Fraunces, serif', fontSize: '1.3rem', fontWeight: 300, color: s.color, letterSpacing: '-0.02em', lineHeight: 1 }}>
+                  {s.value}
+                </p>
+                <p style={{ fontSize: 10, color: 'var(--text-3)', marginTop: 3 }}>{s.sub}</p>
+              </div>
+            ))}
+          </div>
+
+          {/* Breakdown */}
+          <div style={{ padding: '16px 24px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+            <div>
+              <p style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-2)', marginBottom: 8 }}>Composição das entradas</p>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12 }}>
+                  <span style={{ color: 'var(--text-2)' }}>Salário Leo</span>
+                  <span style={{ fontFamily: 'Fraunces, serif', color: 'var(--green)' }}>{formatCurrency(salaries.Leonardo)}</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12 }}>
+                  <span style={{ color: 'var(--text-2)' }}>Salário Serena</span>
+                  <span style={{ fontFamily: 'Fraunces, serif', color: 'var(--green)' }}>{formatCurrency(salaries.Serena)}</span>
+                </div>
+              </div>
+            </div>
+            <div>
+              <p style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-2)', marginBottom: 8 }}>Composição das saídas</p>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12 }}>
+                  <span style={{ color: 'var(--text-2)' }}>Gastos fixos</span>
+                  <span style={{ fontFamily: 'Fraunces, serif', color: 'var(--red)' }}>{formatCurrency(monthlyFixed)}</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12 }}>
+                  <span style={{ color: 'var(--text-2)' }}>Aportes cofrinhos</span>
+                  <span style={{ fontFamily: 'Fraunces, serif', color: 'var(--text-2)' }}>{formatCurrency(monthlyJarContribs)}</span>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       )}

@@ -80,7 +80,7 @@ export default function FixedExpenses() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
         {/* Pie chart */}
         <div className="card p-5">
           <h3 className="font-semibold text-gray-800 mb-3">Por Categoria</h3>

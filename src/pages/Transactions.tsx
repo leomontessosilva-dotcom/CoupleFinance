@@ -28,10 +28,11 @@ const emptyForm = (): Partial<Transaction> => ({
   date: new Date().toISOString().split('T')[0],
   person: 'Casal',
   paymentMethod: undefined,
+  creditCardId: undefined,
 });
 
 export default function Transactions() {
-  const { transactions, addTransaction, deleteTransaction, currentMonth } = useStore();
+  const { transactions, addTransaction, deleteTransaction, currentMonth, salaries, fixedExpenses, creditCards } = useStore();
   const [showModal, setShowModal] = useState(false);
   const [form, setForm] = useState(emptyForm());
   const [search, setSearch] = useState('');
@@ -53,10 +54,17 @@ export default function Transactions() {
       if (search && !t.description.toLowerCase().includes(search.toLowerCase())) return false;
       return true;
     }).sort((a, b) => b.date.localeCompare(a.date));
-  }, [monthTx, filterPerson, filterType, filterCategory, search]);
+  }, [monthTx, filterPerson, filterType, filterCategory, filterPayment, search]);
 
-  const totalIncome = monthTx.filter((t) => t.type === 'income').reduce((s, t) => s + t.amount, 0);
-  const totalExpenses = monthTx.filter((t) => t.type === 'expense').reduce((s, t) => s + t.amount, 0);
+  // Receitas = salários + transações de entrada do mês
+  const salaryIncome = salaries.Leonardo + salaries.Serena;
+  const txIncome = monthTx.filter((t) => t.type === 'income').reduce((s, t) => s + t.amount, 0);
+  const totalIncome = salaryIncome + txIncome;
+
+  // Despesas = gastos fixos ativos + transações de saída do mês
+  const fixedTotal = fixedExpenses.filter((f) => f.active).reduce((s, f) => s + f.amount, 0);
+  const txExpenses = monthTx.filter((t) => t.type === 'expense').reduce((s, t) => s + t.amount, 0);
+  const totalExpenses = fixedTotal + txExpenses;
 
   const handleAdd = () => {
     if (!form.description || !form.amount) return;
@@ -69,6 +77,7 @@ export default function Transactions() {
       date: form.date!,
       person: form.person as Person,
       paymentMethod: form.paymentMethod as PaymentMethod | undefined,
+      creditCardId: form.paymentMethod === 'credito' ? form.creditCardId : undefined,
     };
     addTransaction(t);
     setShowModal(false);
@@ -76,8 +85,8 @@ export default function Transactions() {
   };
 
   const exportCSV = () => {
-    const rows = [['Data', 'Descrição', 'Categoria', 'Tipo', 'Valor', 'Pessoa'],
-      ...filtered.map((t) => [t.date, t.description, t.category, t.type, t.amount, t.person])];
+    const rows = [['Data', 'Descrição', 'Categoria', 'Tipo', 'Valor', 'Pessoa', 'Forma'],
+      ...filtered.map((t) => [t.date, t.description, t.category, t.type, t.amount, t.person, t.paymentMethod || ''])];
     const csv = rows.map((r) => r.join(',')).join('\n');
     const blob = new Blob([csv], { type: 'text/csv' });
     const url = URL.createObjectURL(blob);
@@ -85,158 +94,196 @@ export default function Transactions() {
     a.href = url; a.download = `transacoes-${currentMonth}.csv`; a.click();
   };
 
+  const balance = totalIncome - totalExpenses;
+
   return (
-    <div className="space-y-5 animate-fade-in">
+    <div className="animate-fade-in" style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+
       {/* Summary cards */}
-      <div className="grid grid-cols-3 gap-4">
-        <div className="stat-card flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-green-50 flex items-center justify-center">
-            <ArrowUpRight size={18} className="text-green-500" />
-          </div>
-          <div>
-            <p className="label">Entradas</p>
-            <p className="font-display text-xl font-semibold text-green-600">{formatCurrency(totalIncome)}</p>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12 }}>
+        <div className="stat-card">
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <div style={{ width: 36, height: 36, borderRadius: 10, background: '#DCFCE7', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+              <ArrowUpRight size={16} color="#16a34a" />
+            </div>
+            <div style={{ minWidth: 0 }}>
+              <p className="label" style={{ marginBottom: 2 }}>Entradas</p>
+              <p style={{ fontFamily: 'Fraunces, serif', fontSize: '1.2rem', fontWeight: 400, color: '#16a34a', letterSpacing: '-0.02em', lineHeight: 1 }}>
+                {formatCurrency(totalIncome)}
+              </p>
+              {salaryIncome > 0 && (
+                <p style={{ fontSize: 10, color: 'var(--text-3)', marginTop: 2 }}>
+                  Salário: {formatCurrency(salaryIncome)}
+                </p>
+              )}
+            </div>
           </div>
         </div>
-        <div className="stat-card flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-red-50 flex items-center justify-center">
-            <ArrowDownRight size={18} className="text-red-400" />
-          </div>
-          <div>
-            <p className="label">Saídas</p>
-            <p className="font-display text-xl font-semibold text-red-500">{formatCurrency(totalExpenses)}</p>
+
+        <div className="stat-card">
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <div style={{ width: 36, height: 36, borderRadius: 10, background: '#FEE2E2', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+              <ArrowDownRight size={16} color="#dc2626" />
+            </div>
+            <div style={{ minWidth: 0 }}>
+              <p className="label" style={{ marginBottom: 2 }}>Saídas</p>
+              <p style={{ fontFamily: 'Fraunces, serif', fontSize: '1.2rem', fontWeight: 400, color: '#dc2626', letterSpacing: '-0.02em', lineHeight: 1 }}>
+                {formatCurrency(totalExpenses)}
+              </p>
+              {fixedTotal > 0 && (
+                <p style={{ fontSize: 10, color: 'var(--text-3)', marginTop: 2 }}>
+                  Fixos: {formatCurrency(fixedTotal)}
+                </p>
+              )}
+            </div>
           </div>
         </div>
-        <div className="stat-card flex items-center gap-3">
-          <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${totalIncome - totalExpenses >= 0 ? 'bg-purple-50' : 'bg-red-50'}`}>
-            <span className={`text-lg font-bold ${totalIncome - totalExpenses >= 0 ? 'text-purple-600' : 'text-red-500'}`}>≡</span>
-          </div>
-          <div>
-            <p className="label">Saldo</p>
-            <p className={`font-display text-xl font-semibold ${totalIncome - totalExpenses >= 0 ? 'text-purple-700' : 'text-red-500'}`}>
-              {formatCurrency(totalIncome - totalExpenses)}
-            </p>
+
+        <div className="stat-card">
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <div style={{ width: 36, height: 36, borderRadius: 10, background: balance >= 0 ? '#EDE9FE' : '#FEE2E2', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+              <span style={{ fontSize: 15, fontWeight: 700, color: balance >= 0 ? 'var(--accent)' : '#dc2626' }}>≡</span>
+            </div>
+            <div style={{ minWidth: 0 }}>
+              <p className="label" style={{ marginBottom: 2 }}>Saldo</p>
+              <p style={{ fontFamily: 'Fraunces, serif', fontSize: '1.2rem', fontWeight: 400, color: balance >= 0 ? 'var(--accent)' : '#dc2626', letterSpacing: '-0.02em', lineHeight: 1 }}>
+                {formatCurrency(balance)}
+              </p>
+            </div>
           </div>
         </div>
       </div>
 
       {/* Filters row */}
-      <div className="card p-4">
-        <div className="flex flex-wrap items-center gap-3">
-          {/* Search */}
-          <div className="relative flex-1 min-w-48">
-            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-            <input
-              type="text"
-              placeholder="Buscar transação..."
-              className="input-field"
-              style={{ paddingLeft: '2.25rem' }}
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-            />
+      <div className="surface" style={{ padding: '14px 16px' }}>
+        {/* Top row: search + add */}
+        <div style={{ display: 'flex', gap: 10, marginBottom: 10 }}>
+          <div style={{ position: 'relative', flex: 1 }}>
+            <Search size={14} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-3)', pointerEvents: 'none' }} />
+            <input type="text" placeholder="Buscar transação..." className="input-field"
+              style={{ paddingLeft: '2.2rem' }} value={search}
+              onChange={(e) => setSearch(e.target.value)} />
           </div>
+          <button onClick={exportCSV} className="btn-outline" style={{ display: 'flex', alignItems: 'center', gap: 5, whiteSpace: 'nowrap' }}>
+            <Download size={13} /> Exportar
+          </button>
+          <button onClick={() => { setForm(emptyForm()); setShowModal(true); }} className="gradient-btn" style={{ whiteSpace: 'nowrap' }}>
+            <Plus size={15} /> Adicionar
+          </button>
+        </div>
 
-          <select className="select-field w-36" value={filterType} onChange={(e) => setFilterType(e.target.value)}>
+        {/* Bottom row: filters */}
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+          <select className="select-field" style={{ width: 'auto', minWidth: 110, flex: '1 1 110px' }} value={filterType} onChange={(e) => setFilterType(e.target.value)}>
             <option value="all">Todos tipos</option>
             <option value="income">Entradas</option>
             <option value="expense">Saídas</option>
           </select>
 
-          <select className="select-field w-40" value={filterPerson} onChange={(e) => setFilterPerson(e.target.value)}>
+          <select className="select-field" style={{ width: 'auto', minWidth: 110, flex: '1 1 110px' }} value={filterPerson} onChange={(e) => setFilterPerson(e.target.value)}>
             <option value="all">Todos</option>
             <option value="Leonardo">Leonardo</option>
             <option value="Serena">Serena</option>
             <option value="Casal">Casal</option>
           </select>
 
-          <select className="select-field w-44" value={filterCategory} onChange={(e) => setFilterCategory(e.target.value)}>
+          <select className="select-field" style={{ width: 'auto', minWidth: 130, flex: '1 1 130px' }} value={filterCategory} onChange={(e) => setFilterCategory(e.target.value)}>
             <option value="all">Todas categorias</option>
             {ALL_CATEGORIES.map((c) => <option key={c}>{c}</option>)}
           </select>
 
-          <select className="select-field w-40" value={filterPayment} onChange={(e) => setFilterPayment(e.target.value)}>
+          <select className="select-field" style={{ width: 'auto', minWidth: 130, flex: '1 1 130px' }} value={filterPayment} onChange={(e) => setFilterPayment(e.target.value)}>
             <option value="all">Todas formas</option>
             {PAYMENT_METHODS.map((p) => <option key={p.value} value={p.value}>{p.label}</option>)}
           </select>
-
-          <button onClick={exportCSV} className="btn-outline flex items-center gap-1.5">
-            <Download size={14} /> Exportar
-          </button>
-
-          <button onClick={() => { setForm(emptyForm()); setShowModal(true); }} className="gradient-btn flex items-center gap-1.5">
-            <Plus size={16} /> Adicionar
-          </button>
         </div>
       </div>
 
       {/* Table */}
-      <div className="card overflow-hidden">
-        <div style={{ overflowX: 'auto' }}>
-        <table className="w-full">
-          <thead>
-            <tr className="border-b border-gray-50">
-              <th className="text-left p-4 label">Descrição</th>
-              <th className="text-left p-4 label">Categoria</th>
-              <th className="text-left p-4 label">Data</th>
-              <th className="text-left p-4 label">Pessoa</th>
-              <th className="text-left p-4 label">Forma</th>
-              <th className="text-right p-4 label">Valor</th>
-              <th className="p-4 w-10" />
-            </tr>
-          </thead>
-          <tbody>
-            {filtered.length === 0 && (
-              <tr>
-                <td colSpan={6} className="text-center py-12 text-gray-400 text-sm">
-                  Nenhuma transação encontrada
-                </td>
+      <div className="surface" style={{ overflow: 'hidden' }}>
+        <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 560 }}>
+            <thead>
+              <tr style={{ borderBottom: '1px solid var(--border)', background: 'var(--surface-2)' }}>
+                <th style={{ textAlign: 'left', padding: '10px 16px', fontSize: 10, fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--text-3)', whiteSpace: 'nowrap' }}>Descrição</th>
+                <th style={{ textAlign: 'left', padding: '10px 12px', fontSize: 10, fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--text-3)', whiteSpace: 'nowrap' }}>Categoria</th>
+                <th style={{ textAlign: 'left', padding: '10px 12px', fontSize: 10, fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--text-3)', whiteSpace: 'nowrap' }}>Data</th>
+                <th style={{ textAlign: 'left', padding: '10px 12px', fontSize: 10, fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--text-3)', whiteSpace: 'nowrap' }}>Pessoa</th>
+                <th style={{ textAlign: 'left', padding: '10px 12px', fontSize: 10, fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--text-3)', whiteSpace: 'nowrap' }}>Forma</th>
+                <th style={{ textAlign: 'right', padding: '10px 16px', fontSize: 10, fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--text-3)', whiteSpace: 'nowrap' }}>Valor</th>
+                <th style={{ width: 36 }} />
               </tr>
-            )}
-            {filtered.map((tx) => (
-              <tr key={tx.id} className="border-b border-gray-50 hover:bg-gray-50/50 transition-colors">
-                <td className="p-4">
-                  <div className="flex items-center gap-3">
-                    <div className="w-8 h-8 rounded-lg flex items-center justify-center text-white text-xs font-bold flex-shrink-0"
-                      style={{ backgroundColor: categoryColors[tx.category] || '#9ca3af' }}>
-                      {tx.category.charAt(0)}
+            </thead>
+            <tbody>
+              {filtered.length === 0 && (
+                <tr>
+                  <td colSpan={7} style={{ textAlign: 'center', padding: '48px 16px', color: 'var(--text-3)', fontSize: 13 }}>
+                    Nenhuma transação encontrada
+                  </td>
+                </tr>
+              )}
+              {filtered.map((tx) => (
+                <tr key={tx.id} style={{ borderBottom: '1px solid var(--border)' }}
+                  onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(0,0,0,0.012)')}
+                  onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+                >
+                  <td style={{ padding: '11px 16px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                      <div style={{ width: 28, height: 28, borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, background: `${categoryColors[tx.category] || '#9ca3af'}18` }}>
+                        <span style={{ fontSize: 11, fontWeight: 700, color: categoryColors[tx.category] || '#9ca3af' }}>
+                          {tx.category.charAt(0)}
+                        </span>
+                      </div>
+                      <span style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--text-1)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 180 }}>
+                        {tx.description}
+                      </span>
                     </div>
-                    <span className="text-sm font-semibold text-gray-700">{tx.description}</span>
-                  </div>
-                </td>
-                <td className="p-4">
-                  <span className="badge" style={{ backgroundColor: `${categoryColors[tx.category]}18`, color: categoryColors[tx.category] }}>
-                    {tx.category}
-                  </span>
-                </td>
-                <td className="p-4 text-sm text-gray-500">{formatDate(tx.date)}</td>
-                <td className="p-4">
-                  <span className={`badge ${tx.person === 'Leonardo' ? 'bg-purple-50 text-purple-600' : tx.person === 'Serena' ? 'bg-pink-50 text-pink-600' : 'bg-gray-50 text-gray-600'}`}>
-                    {tx.person}
-                  </span>
-                </td>
-                <td className="p-4">
-                  {tx.paymentMethod ? (
-                    <span className={`badge ${tx.paymentMethod === 'credito' ? 'bg-purple-50 text-purple-600' : tx.paymentMethod === 'pix' ? 'bg-green-50 text-green-600' : 'bg-gray-50 text-gray-500'}`}>
-                      {PAYMENT_LABELS[tx.paymentMethod]}
+                  </td>
+                  <td style={{ padding: '11px 12px' }}>
+                    <span className="pill" style={{ background: `${categoryColors[tx.category] || '#9ca3af'}15`, color: categoryColors[tx.category] || '#9ca3af', fontSize: 10.5 }}>
+                      {tx.category}
                     </span>
-                  ) : (
-                    <span className="text-xs text-gray-300">—</span>
-                  )}
-                </td>
-                <td className="p-4 text-right">
-                  <span className={`font-semibold text-sm ${tx.type === 'income' ? 'text-green-600' : 'text-red-500'}`}>
-                    {tx.type === 'income' ? '+' : '-'}{formatCurrency(tx.amount)}
-                  </span>
-                </td>
-                <td className="p-4">
-                  <button onClick={() => deleteTransaction(tx.id)} className="w-7 h-7 rounded-lg hover:bg-red-50 flex items-center justify-center transition-colors">
-                    <Trash2 size={13} className="text-red-400" />
-                  </button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+                  </td>
+                  <td style={{ padding: '11px 12px', fontSize: 12, color: 'var(--text-2)', whiteSpace: 'nowrap' }}>{formatDate(tx.date)}</td>
+                  <td style={{ padding: '11px 12px' }}>
+                    <span className={`pill ${tx.person === 'Leonardo' ? 'pill-purple' : tx.person === 'Serena' ? 'pill-pink' : 'pill-gray'}`} style={{ fontSize: 10.5 }}>
+                      {tx.person}
+                    </span>
+                  </td>
+                  <td style={{ padding: '11px 12px' }}>
+                    {tx.paymentMethod ? (
+                      <div>
+                        <span className={`pill ${tx.paymentMethod === 'credito' ? 'pill-purple' : tx.paymentMethod === 'pix' ? 'pill-green' : 'pill-gray'}`} style={{ fontSize: 10.5 }}>
+                          {PAYMENT_LABELS[tx.paymentMethod]}
+                        </span>
+                        {tx.paymentMethod === 'credito' && tx.creditCardId && creditCards.find(c => c.id === tx.creditCardId) && (
+                          <p style={{ fontSize: 9.5, color: 'var(--text-3)', marginTop: 2 }}>
+                            {creditCards.find(c => c.id === tx.creditCardId)!.name}
+                          </p>
+                        )}
+                      </div>
+                    ) : (
+                      <span style={{ fontSize: 11, color: 'var(--border-strong)' }}>—</span>
+                    )}
+                  </td>
+                  <td style={{ padding: '11px 16px', textAlign: 'right' }}>
+                    <span style={{ fontFamily: 'Fraunces, serif', fontSize: 13, fontWeight: 400, letterSpacing: '-0.01em', color: tx.type === 'income' ? 'var(--green)' : 'var(--red)' }}>
+                      {tx.type === 'income' ? '+' : '−'}{formatCurrency(tx.amount)}
+                    </span>
+                  </td>
+                  <td style={{ padding: '11px 8px' }}>
+                    <button onClick={() => deleteTransaction(tx.id)}
+                      style={{ width: 26, height: 26, borderRadius: 6, border: 'none', cursor: 'pointer', background: 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#f87171' }}
+                      onMouseEnter={(e) => (e.currentTarget.style.background = '#FEE2E2')}
+                      onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+                    >
+                      <Trash2 size={12} />
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       </div>
 
@@ -244,46 +291,50 @@ export default function Transactions() {
       {showModal && (
         <div className="modal-overlay" onClick={() => setShowModal(false)}>
           <div className="modal-panel" onClick={(e) => e.stopPropagation()}>
-            <h3 className="font-display text-xl font-semibold text-gray-800 mb-5">Nova Transação</h3>
+            <h3 style={{ fontFamily: 'Fraunces, serif', fontSize: '1.25rem', fontWeight: 300, color: 'var(--text-1)', letterSpacing: '-0.02em', marginBottom: 20 }}>
+              Nova Transação
+            </h3>
 
             {/* Type toggle */}
-            <div className="flex gap-2 mb-5 p-1 bg-gray-100 rounded-xl">
+            <div style={{ display: 'flex', gap: 4, marginBottom: 20, padding: 4, background: 'var(--surface-2)', borderRadius: 10, border: '1px solid var(--border)' }}>
               <button
-                className={`flex-1 py-2 rounded-lg text-sm font-semibold transition-all ${form.type === 'expense' ? 'bg-white shadow-sm text-red-500' : 'text-gray-500'}`}
+                style={{ flex: 1, padding: '8px 0', borderRadius: 7, border: 'none', cursor: 'pointer', fontSize: 13, fontWeight: 600, transition: 'all 120ms', background: form.type === 'expense' ? 'white' : 'transparent', color: form.type === 'expense' ? '#dc2626' : 'var(--text-3)', boxShadow: form.type === 'expense' ? '0 1px 4px rgba(0,0,0,0.08)' : 'none' }}
                 onClick={() => setForm({ ...form, type: 'expense', category: 'Alimentação' })}
               >
                 Despesa
               </button>
               <button
-                className={`flex-1 py-2 rounded-lg text-sm font-semibold transition-all ${form.type === 'income' ? 'bg-white shadow-sm text-green-600' : 'text-gray-500'}`}
+                style={{ flex: 1, padding: '8px 0', borderRadius: 7, border: 'none', cursor: 'pointer', fontSize: 13, fontWeight: 600, transition: 'all 120ms', background: form.type === 'income' ? 'white' : 'transparent', color: form.type === 'income' ? 'var(--green)' : 'var(--text-3)', boxShadow: form.type === 'income' ? '0 1px 4px rgba(0,0,0,0.08)' : 'none' }}
                 onClick={() => setForm({ ...form, type: 'income', category: 'Salário' })}
               >
                 Receita
               </button>
             </div>
 
-            <div className="space-y-4">
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
               <div>
-                <label className="form-label">Descrição</label>
-                <input className="input-field" placeholder="Ex: Supermercado Extra" value={form.description}
+                <label className="f-label">Descrição</label>
+                <input className="input" placeholder="Ex: Supermercado Extra" value={form.description}
                   onChange={(e) => setForm({ ...form, description: e.target.value })} />
               </div>
-              <div className="grid grid-cols-2 gap-3">
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
                 <div>
-                  <label className="form-label">Valor (R$)</label>
-                  <input type="number" className="input-field" placeholder="0,00" value={form.amount || ''}
+                  <label className="f-label">Valor (R$)</label>
+                  <input type="number" className="input" placeholder="0,00" value={form.amount || ''}
                     onChange={(e) => setForm({ ...form, amount: parseFloat(e.target.value) || 0 })} />
                 </div>
                 <div>
-                  <label className="form-label">Data</label>
-                  <input type="date" className="input-field" value={form.date}
+                  <label className="f-label">Data</label>
+                  <input type="date" className="input" value={form.date}
                     onChange={(e) => setForm({ ...form, date: e.target.value })} />
                 </div>
               </div>
-              <div className="grid grid-cols-2 gap-3">
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
                 <div>
-                  <label className="form-label">Categoria</label>
-                  <select className="select-field" value={form.category}
+                  <label className="f-label">Categoria</label>
+                  <select className="input" value={form.category}
                     onChange={(e) => setForm({ ...form, category: e.target.value as TransactionCategory })}>
                     {(form.type === 'income' ? INCOME_CATEGORIES : EXPENSE_CATEGORIES).map((c) => (
                       <option key={c}>{c}</option>
@@ -291,8 +342,8 @@ export default function Transactions() {
                   </select>
                 </div>
                 <div>
-                  <label className="form-label">Pessoa</label>
-                  <select className="select-field" value={form.person}
+                  <label className="f-label">Pessoa</label>
+                  <select className="input" value={form.person}
                     onChange={(e) => setForm({ ...form, person: e.target.value as Person })}>
                     <option>Leonardo</option>
                     <option>Serena</option>
@@ -300,17 +351,37 @@ export default function Transactions() {
                   </select>
                 </div>
               </div>
+
               <div>
-                <label className="form-label">Forma de pagamento</label>
-                <select className="select-field" value={form.paymentMethod ?? ''}
-                  onChange={(e) => setForm({ ...form, paymentMethod: (e.target.value as PaymentMethod) || undefined })}>
+                <label className="f-label">Forma de pagamento</label>
+                <select className="input" value={form.paymentMethod ?? ''}
+                  onChange={(e) => setForm({ ...form, paymentMethod: (e.target.value as PaymentMethod) || undefined, creditCardId: undefined })}>
                   <option value="">Não informado</option>
                   {PAYMENT_METHODS.map((p) => <option key={p.value} value={p.value}>{p.label}</option>)}
                 </select>
               </div>
-              <div className="flex gap-3 pt-2">
-                <button className="gradient-btn flex-1" onClick={handleAdd}>Salvar</button>
-                <button className="btn-outline flex-1" onClick={() => setShowModal(false)}>Cancelar</button>
+
+              {/* Credit card selector — only when paymentMethod === 'credito' */}
+              {form.paymentMethod === 'credito' && creditCards.length > 0 && (
+                <div>
+                  <label className="f-label">Cartão de crédito</label>
+                  <select className="input" value={form.creditCardId ?? ''}
+                    onChange={(e) => setForm({ ...form, creditCardId: e.target.value || undefined })}>
+                    <option value="">Selecionar cartão (opcional)</option>
+                    {creditCards.map((c) => (
+                      <option key={c.id} value={c.id}>{c.name} — {c.person}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
+              <div style={{ display: 'flex', gap: 8, paddingTop: 4 }}>
+                <button className="btn-primary" style={{ flex: 1, justifyContent: 'center' }} onClick={handleAdd}>
+                  Salvar
+                </button>
+                <button className="btn-secondary" style={{ flex: 1, justifyContent: 'center' }} onClick={() => setShowModal(false)}>
+                  Cancelar
+                </button>
               </div>
             </div>
           </div>

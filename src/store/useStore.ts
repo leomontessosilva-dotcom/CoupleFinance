@@ -30,6 +30,7 @@ interface AppState {
 
   // Transactions
   addTransaction: (t: Transaction) => void;
+  updateTransaction: (t: Transaction) => void;
   deleteTransaction: (id: string) => void;
 
   // Fixed Expenses
@@ -146,6 +147,10 @@ export const useStore = create<AppState>()((set, get) => ({
   addTransaction: (t) => {
     set((s) => ({ transactions: [t, ...s.transactions] }));
     txDB.insert(t);
+  },
+  updateTransaction: (t) => {
+    set((s) => ({ transactions: s.transactions.map((x) => (x.id === t.id ? t : x)) }));
+    txDB.update(t);
   },
   deleteTransaction: (id) => {
     set((s) => ({ transactions: s.transactions.filter((x) => x.id !== id) }));

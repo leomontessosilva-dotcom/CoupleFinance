@@ -463,6 +463,16 @@
     --topbar-h:  52px;
   }
 
+  .modal-overlay {
+    padding: 16px 12px 32px !important;
+    align-items: flex-start !important;
+  }
+  .modal-panel, .modal-box {
+    max-width: 100% !important;
+    width: 100% !important;
+    padding: 20px 18px !important;
+  }
+
   .mobile-hidden { display: none !important; }
   .mobile-only   { display: flex !important; }
 
