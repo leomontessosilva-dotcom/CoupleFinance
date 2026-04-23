@@ -1,4 +1,5 @@
 import { useState, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import { Plus, Trash2, ToggleLeft, ToggleRight } from 'lucide-react';
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 import { useStore } from '../store/useStore';
@@ -152,7 +153,7 @@ export default function FixedExpenses() {
       </div>
 
       {/* Modal */}
-      {showModal && (
+      {showModal && createPortal(
         <div className="modal-overlay" onClick={() => setShowModal(false)}>
           <div className="modal-panel" onClick={(e) => e.stopPropagation()}>
             <h3 className="font-display text-xl font-semibold text-gray-800 mb-5">Novo Gasto Fixo</h3>
@@ -198,7 +199,8 @@ export default function FixedExpenses() {
               </div>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );

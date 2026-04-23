@@ -1,4 +1,5 @@
 import { useState, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import { Plus, Trash2, PlusCircle, MinusCircle, Pencil } from 'lucide-react';
 import { useStore } from '../store/useStore';
 import { formatCurrency, generateId } from '../utils/format';
@@ -356,7 +357,7 @@ export default function Cofrinhos() {
       </div>
 
       {/* Modal */}
-      {showModal && (
+      {showModal && createPortal(
         <div className="modal-overlay" onClick={closeModal}>
           <div className="modal-panel" onClick={(e) => e.stopPropagation()}>
             <h3 className="font-display text-xl font-semibold text-gray-800 mb-5">
@@ -449,7 +450,8 @@ export default function Cofrinhos() {
               </div>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );

@@ -1,4 +1,5 @@
 import { useState, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import { useDropzone } from 'react-dropzone';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { Upload, FileText, Trash2, Sparkles, CheckCircle, AlertCircle, Loader2, X, Pencil, Check } from 'lucide-react';
@@ -35,11 +36,11 @@ function AIReviewModal({
 
   const selected = list.filter((i) => i.selected);
 
-  return (
+  return createPortal(
     <div className="modal-overlay" onClick={onClose}>
       <div
         className="modal-panel"
-        style={{ maxWidth: 600, maxHeight: '90vh', display: 'flex', flexDirection: 'column' }}
+        style={{ maxWidth: 600, display: 'flex', flexDirection: 'column' }}
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
@@ -127,7 +128,8 @@ function AIReviewModal({
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
 
@@ -480,7 +482,7 @@ function PersonProfile({ person }: { person: ProfilePerson }) {
       </div>
 
       {/* Upload modal */}
-      {showUploadModal && (
+      {showUploadModal && createPortal(
         <div className="modal-overlay" onClick={() => setShowUploadModal(false)}>
           <div className="modal-panel" onClick={(e) => e.stopPropagation()}>
             <h3 style={{ fontFamily: 'Fraunces, serif', fontSize: '1.2rem', fontWeight: 300, color: 'var(--text-1)', marginBottom: 4 }}>
@@ -554,7 +556,8 @@ function PersonProfile({ person }: { person: ProfilePerson }) {
               </div>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* AI Review Modal */}

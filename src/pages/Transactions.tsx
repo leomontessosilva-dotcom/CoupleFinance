@@ -1,4 +1,5 @@
 import { useState, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import { Plus, Trash2, Search, Download, ArrowUpRight, ArrowDownRight } from 'lucide-react';
 import { useStore } from '../store/useStore';
 import { formatCurrency, formatDate, isInMonth, categoryColors, generateId } from '../utils/format';
@@ -287,8 +288,8 @@ export default function Transactions() {
         </div>
       </div>
 
-      {/* Add modal */}
-      {showModal && (
+      {/* Add modal — portal so position:fixed is relative to viewport, not page */}
+      {showModal && createPortal(
         <div className="modal-overlay" onClick={() => setShowModal(false)}>
           <div className="modal-panel" onClick={(e) => e.stopPropagation()}>
             <h3 style={{ fontFamily: 'Fraunces, serif', fontSize: '1.25rem', fontWeight: 300, color: 'var(--text-1)', letterSpacing: '-0.02em', marginBottom: 20 }}>
@@ -385,7 +386,8 @@ export default function Transactions() {
               </div>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );

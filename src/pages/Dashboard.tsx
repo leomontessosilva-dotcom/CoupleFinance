@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { createPortal } from 'react-dom';
 import {
   AreaChart, Area, XAxis, YAxis, Tooltip,
   ResponsiveContainer, CartesianGrid,
@@ -527,7 +528,7 @@ export default function Dashboard() {
       </div>
 
       {/* ══ Add / Edit CC Modal ════════════════════════════════════════════════ */}
-      {showCCModal && (
+      {showCCModal && createPortal(
         <div className="modal-overlay" onClick={() => setShowCCModal(false)}>
           <div className="modal-panel" onClick={e => e.stopPropagation()}>
             <h3 style={{ fontFamily: 'Fraunces, serif', fontSize: '1.2rem', fontWeight: 300, marginBottom: 20, color: 'var(--text-1)', letterSpacing: '-0.02em' }}>
@@ -574,7 +575,8 @@ export default function Dashboard() {
               </div>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
     </div>
