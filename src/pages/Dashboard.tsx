@@ -151,7 +151,7 @@ export default function Dashboard() {
 
       {/* ══ ZONE 1: Hero Patrimônio ══════════════════════════════════════ */}
       <div
-        className="animate-in surface"
+        className="animate-in surface dashboard-hero-card"
         style={{ padding: '32px 36px 0', overflow: 'hidden', position: 'relative' }}
       >
         <div style={{
@@ -415,7 +415,8 @@ export default function Dashboard() {
               <p style={{ fontSize: 12, color: 'var(--text-3)' }}>Nenhuma transação este mês</p>
             </div>
           ) : (
-            <table className="data-table" style={{ tableLayout: 'fixed' }}>
+            <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
+            <table className="data-table" style={{ tableLayout: 'fixed', minWidth: 500 }}>
               <colgroup>
                 <col style={{ width: '45%' }} />
                 <col style={{ width: '20%' }} />
@@ -467,6 +468,7 @@ export default function Dashboard() {
                 ))}
               </tbody>
             </table>
+            </div>
           )}
         </div>
 

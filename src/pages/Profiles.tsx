@@ -334,7 +334,7 @@ function PersonProfile({ person }: { person: ProfilePerson }) {
           <div>
             <h2 style={{ fontFamily: 'Fraunces, serif', fontSize: '1.6rem', fontWeight: 300, marginBottom: 2 }}>{person}</h2>
             <p style={{ fontSize: 12, opacity: 0.65 }}>{isLeo ? 'Engenheiro de Software' : 'Designer UX/UI'}</p>
-            <div style={{ display: 'flex', gap: 20, marginTop: 12, alignItems: 'flex-end' }}>
+            <div className="profile-stats-row" style={{ display: 'flex', gap: 20, marginTop: 12, alignItems: 'flex-end' }}>
               {/* Editable salary */}
               <div>
                 <p style={{ fontSize: 9, textTransform: 'uppercase', letterSpacing: '0.08em', opacity: 0.6, marginBottom: 2 }}>Salário Atual</p>

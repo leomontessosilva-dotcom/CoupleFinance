@@ -1,4 +1,5 @@
 import { useState, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import { Plus, Trash2, TrendingUp, TrendingDown } from 'lucide-react';
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer, Legend, BarChart, Bar, XAxis, YAxis, CartesianGrid } from 'recharts';
 import { useStore } from '../store/useStore';
@@ -60,7 +61,7 @@ export default function Investments() {
   return (
     <div className="space-y-6 animate-fade-in">
       {/* Summary */}
-      <div className="grid grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
         <div className="stat-card">
           <p className="label mb-1">Total Investido</p>
           <p className="font-display text-xl font-semibold text-gray-800">{formatCurrency(totalInvested)}</p>
@@ -130,7 +131,8 @@ export default function Investments() {
             <Plus size={16} /> Adicionar
           </button>
         </div>
-        <table className="w-full">
+        <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
+        <table className="w-full" style={{ minWidth: 600 }}>
           <thead>
             <tr className="border-b border-gray-50">
               <th className="text-left p-4 label">Ativo</th>
@@ -184,10 +186,11 @@ export default function Investments() {
             })}
           </tbody>
         </table>
+        </div>
       </div>
 
       {/* Modal */}
-      {showModal && (
+      {showModal && createPortal(
         <div className="modal-overlay" onClick={() => setShowModal(false)}>
           <div className="modal-panel" onClick={(e) => e.stopPropagation()}>
             <h3 className="font-display text-xl font-semibold text-gray-800 mb-5">Novo Investimento</h3>
@@ -250,7 +253,8 @@ export default function Investments() {
               </div>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );

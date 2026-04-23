@@ -484,9 +484,17 @@
     padding-bottom: var(--mobile-nav-h) !important;
   }
 
-  .page-inner { padding: 14px !important; }
+  .page-inner { padding: 12px !important; }
 
-  .display-hero { font-size: 2.25rem !important; }
+  .display-hero { font-size: 2rem !important; }
+
+  /* TopBar */
+  .topbar { padding: 0 14px !important; }
+  .topbar-profile { display: none !important; }
+  .topbar-month-text { min-width: 72px !important; }
+
+  /* Dashboard hero */
+  .dashboard-hero-card { padding: 18px 16px 0 !important; }
 
   .stat-chips-row { flex-wrap: wrap !important; }
   .stat-chip {
@@ -494,12 +502,15 @@
     width: 50% !important;
     border-left: none !important;
     border-top: 1px solid var(--border) !important;
-    padding: 10px 14px !important;
+    padding: 10px 12px !important;
   }
   .stat-chip:nth-child(-n+2) { border-top: none !important; }
 
   .zone-grid-2 { grid-template-columns: 1fr !important; }
   .zone-grid-3 { grid-template-columns: 1fr !important; }
+
+  /* Profile header stats */
+  .profile-stats-row { gap: 12px !important; flex-wrap: wrap !important; }
 }
 
 @media (min-width: 769px) {

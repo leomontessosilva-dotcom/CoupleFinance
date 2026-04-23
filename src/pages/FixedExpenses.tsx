@@ -57,7 +57,7 @@ export default function FixedExpenses() {
   return (
     <div className="space-y-6 animate-fade-in">
       {/* Summary cards */}
-      <div className="grid grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <div className="stat-card">
           <p className="label mb-1">Total Mensal</p>
           <p className="font-display text-2xl font-semibold gradient-text">{formatCurrency(totalActive)}</p>

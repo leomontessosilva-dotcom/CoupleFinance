@@ -17,6 +17,7 @@ export default function TopBar() {
 
   return (
     <header
+      className="topbar"
       style={{
         position: 'fixed',
         top: 0,
@@ -63,7 +64,7 @@ export default function TopBar() {
           borderRadius: 7,
           background: 'var(--surface-2)',
         }}>
-          <span style={{
+          <span className="topbar-month-text" style={{
             fontSize: 12,
             fontWeight: 600,
             color: 'var(--text-1)',
@@ -86,7 +87,7 @@ export default function TopBar() {
       </div>
 
       {/* Profile avatars */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+      <div className="topbar-profile" style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
         <div style={{ display: 'flex' }}>
           <div style={{
             width: 28, height: 28, borderRadius: '50%',
