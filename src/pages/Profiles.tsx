@@ -2,9 +2,9 @@ import { useState, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { useDropzone } from 'react-dropzone';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
-import { Upload, FileText, Trash2, Sparkles, CheckCircle, AlertCircle, Loader2, X, Pencil, Check } from 'lucide-react';
+import { Upload, FileText, Trash2, Sparkles, CheckCircle, AlertCircle, Loader2, X, Pencil } from 'lucide-react';
 import { useStore } from '../store/useStore';
-import { formatCurrency, formatDate, isInMonth, formatMonthShort, prevMonth, formatFileSize, generateId } from '../utils/format';
+import { formatCurrency, formatDate, isInMonth, formatMonthShort, prevMonth, nextMonth, formatFileSize, generateId, getSalaryForMonth } from '../utils/format';
 import type { Person, DocumentType, UploadedDocument, Transaction, TransactionCategory } from '../types';
 import { parseDocument } from '../lib/parser';
 import type { ParsedTransaction } from '../lib/parser';
@@ -135,7 +135,7 @@ function AIReviewModal({
 
 /* ── Person Profile ─────────────────────────────────────────── */
 function PersonProfile({ person }: { person: ProfilePerson }) {
-  const { transactions, fixedExpenses, documents, savingsJars, addDocument, deleteDocument, addTransaction, addToJar, currentMonth, salaries, setSalary } = useStore();
+  const { transactions, fixedExpenses, documents, savingsJars, addDocument, deleteDocument, addTransaction, addToJar, currentMonth, salaryHistory, setSalaryForMonth } = useStore();
 
   const [showUploadModal, setShowUploadModal] = useState(false);
   const [docType, setDocType] = useState<DocumentType>('Holerite');
@@ -146,6 +146,7 @@ function PersonProfile({ person }: { person: ProfilePerson }) {
 
   const [editingSalary, setEditingSalary] = useState(false);
   const [salaryDraft, setSalaryDraft] = useState('');
+  const [salaryFromMonth, setSalaryFromMonth] = useState(nextMonth(currentMonth));
   const [parsing, setParsing] = useState(false);
   const [parseError, setParseError] = useState('');
   const [reviewData, setReviewData] = useState<{ summary: string; items: ReviewItem[] } | null>(null);
@@ -160,13 +161,22 @@ function PersonProfile({ person }: { person: ProfilePerson }) {
   const personalFixed = fixedExpenses.filter((f) => f.active && (f.person === person || f.person === 'Casal'));
   const personalFixedTotal = personalFixed.reduce((s, f) => s + f.amount, 0);
 
-  const chartData = [];
-  const baseMonth = currentMonth;
+  const currentSalary = getSalaryForMonth(salaryHistory[person], currentMonth);
+
+  const incomeChartData = [];
   for (let i = 5; i >= 0; i--) {
-    let cur = baseMonth;
+    let cur = currentMonth;
     for (let j = 0; j < i; j++) cur = prevMonth(cur);
     const tx = transactions.filter((t) => isInMonth(t.date, cur) && t.type === 'income' && t.person === person);
-    chartData.push({ name: formatMonthShort(cur), Receita: tx.reduce((s, t) => s + t.amount, 0) });
+    incomeChartData.push({ name: formatMonthShort(cur), Receita: tx.reduce((s, t) => s + t.amount, 0) });
+  }
+
+  // Salary evolution: last 12 months using carry-forward
+  const salaryChartData = [];
+  for (let i = 11; i >= 0; i--) {
+    let cur = currentMonth;
+    for (let j = 0; j < i; j++) cur = prevMonth(cur);
+    salaryChartData.push({ name: formatMonthShort(cur), Salário: getSalaryForMonth(salaryHistory[person], cur) });
   }
 
   const personDocs = documents.filter((d) => d.person === person);
@@ -327,29 +337,41 @@ function PersonProfile({ person }: { person: ProfilePerson }) {
             <div style={{ display: 'flex', gap: 20, marginTop: 12, alignItems: 'flex-end' }}>
               {/* Editable salary */}
               <div>
-                <p style={{ fontSize: 9, textTransform: 'uppercase', letterSpacing: '0.08em', opacity: 0.6, marginBottom: 2 }}>Salário</p>
+                <p style={{ fontSize: 9, textTransform: 'uppercase', letterSpacing: '0.08em', opacity: 0.6, marginBottom: 2 }}>Salário Atual</p>
                 {editingSalary ? (
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
                     <input
                       type="number"
                       value={salaryDraft}
                       onChange={(e) => setSalaryDraft(e.target.value)}
                       autoFocus
-                      style={{ width: 100, background: 'rgba(255,255,255,0.2)', border: '1px solid rgba(255,255,255,0.4)', borderRadius: 6, padding: '2px 6px', fontSize: 12, color: 'white', fontFamily: 'inherit' }}
+                      placeholder="Novo valor"
+                      style={{ width: 110, background: 'rgba(255,255,255,0.2)', border: '1px solid rgba(255,255,255,0.4)', borderRadius: 6, padding: '2px 6px', fontSize: 12, color: 'white', fontFamily: 'inherit' }}
                     />
-                    <button onClick={() => { setSalary(person, Number(salaryDraft) || 0); setEditingSalary(false); }}
-                      style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'white', padding: 2 }}>
-                      <Check size={13} />
-                    </button>
-                    <button onClick={() => setEditingSalary(false)}
-                      style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'rgba(255,255,255,0.6)', padding: 2 }}>
-                      <X size={13} />
-                    </button>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                      <span style={{ fontSize: 9, opacity: 0.7 }}>A partir de</span>
+                      <input
+                        type="month"
+                        value={salaryFromMonth}
+                        onChange={(e) => setSalaryFromMonth(e.target.value)}
+                        style={{ background: 'rgba(255,255,255,0.2)', border: '1px solid rgba(255,255,255,0.4)', borderRadius: 6, padding: '2px 4px', fontSize: 11, color: 'white', fontFamily: 'inherit', colorScheme: 'dark' }}
+                      />
+                    </div>
+                    <div style={{ display: 'flex', gap: 4 }}>
+                      <button onClick={() => { setSalaryForMonth(person, salaryFromMonth, Number(salaryDraft) || 0); setEditingSalary(false); }}
+                        style={{ background: 'rgba(255,255,255,0.25)', border: 'none', cursor: 'pointer', color: 'white', padding: '2px 8px', borderRadius: 5, fontSize: 11 }}>
+                        Salvar
+                      </button>
+                      <button onClick={() => setEditingSalary(false)}
+                        style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'rgba(255,255,255,0.6)', padding: 2 }}>
+                        <X size={13} />
+                      </button>
+                    </div>
                   </div>
                 ) : (
                   <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-                    <p style={{ fontSize: 13, fontWeight: 600 }}>{formatCurrency(salaries[person])}</p>
-                    <button onClick={() => { setSalaryDraft(String(salaries[person])); setEditingSalary(true); }}
+                    <p style={{ fontSize: 13, fontWeight: 600 }}>{formatCurrency(currentSalary)}</p>
+                    <button onClick={() => { setSalaryDraft(String(currentSalary)); setSalaryFromMonth(nextMonth(currentMonth)); setEditingSalary(true); }}
                       style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'rgba(255,255,255,0.6)', padding: 2 }}>
                       <Pencil size={11} />
                     </button>
@@ -375,7 +397,7 @@ function PersonProfile({ person }: { person: ProfilePerson }) {
         <div className="card p-5">
           <h3 style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-1)', marginBottom: 16 }}>Histórico de Receitas</h3>
           <ResponsiveContainer width="100%" height={180}>
-            <AreaChart data={chartData}>
+            <AreaChart data={incomeChartData}>
               <defs>
                 <linearGradient id={`grad${person}`} x1="0" y1="0" x2="0" y2="1">
                   <stop offset="5%" stopColor={accentColor} stopOpacity={0.15} />
@@ -416,6 +438,35 @@ function PersonProfile({ person }: { person: ProfilePerson }) {
             ))}
           </div>
         </div>
+      </div>
+
+      {/* Salary evolution chart */}
+      <div className="card p-5">
+        <h3 style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-1)', marginBottom: 4 }}>Evolução do Salário</h3>
+        <p style={{ fontSize: 11, color: 'var(--text-3)', marginBottom: 16 }}>Últimos 12 meses</p>
+        {salaryChartData.every((d) => d.Salário === 0) ? (
+          <p style={{ fontSize: 12, color: 'var(--text-3)', textAlign: 'center', padding: '24px 0' }}>
+            Nenhum histórico de salário ainda. Clique no lápis para registrar.
+          </p>
+        ) : (
+          <ResponsiveContainer width="100%" height={160}>
+            <AreaChart data={salaryChartData}>
+              <defs>
+                <linearGradient id={`salGrad${person}`} x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor={accentColor} stopOpacity={0.18} />
+                  <stop offset="95%" stopColor={accentColor} stopOpacity={0} />
+                </linearGradient>
+              </defs>
+              <CartesianGrid strokeDasharray="3 3" stroke="#f3f4f6" vertical={false} />
+              <XAxis dataKey="name" tick={{ fontSize: 10, fill: '#9ca3af' }} axisLine={false} tickLine={false} interval={1} />
+              <YAxis tick={{ fontSize: 10, fill: '#9ca3af' }} axisLine={false} tickLine={false}
+                tickFormatter={(v) => `R$${(v / 1000).toFixed(1)}k`} width={48} />
+              <Tooltip formatter={(v: any) => formatCurrency(Number(v))} />
+              <Area type="stepAfter" dataKey="Salário" stroke={accentColor} strokeWidth={2}
+                fill={`url(#salGrad${person})`} dot={{ fill: accentColor, r: 3 }} />
+            </AreaChart>
+          </ResponsiveContainer>
+        )}
       </div>
 
       {/* Upload area */}

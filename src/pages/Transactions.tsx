@@ -2,7 +2,7 @@ import { useState, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { Plus, Trash2, Search, Download, ArrowUpRight, ArrowDownRight } from 'lucide-react';
 import { useStore } from '../store/useStore';
-import { formatCurrency, formatDate, isInMonth, categoryColors, generateId } from '../utils/format';
+import { formatCurrency, formatDate, isInMonth, categoryColors, generateId, getSalaryForMonth } from '../utils/format';
 import type { Transaction, TransactionType, TransactionCategory, Person, PaymentMethod } from '../types';
 
 const INCOME_CATEGORIES: TransactionCategory[] = ['Salário', 'Freelance', 'Investimentos', 'Outros Ganhos'];
@@ -33,7 +33,7 @@ const emptyForm = (): Partial<Transaction> => ({
 });
 
 export default function Transactions() {
-  const { transactions, addTransaction, deleteTransaction, currentMonth, salaries, fixedExpenses, creditCards } = useStore();
+  const { transactions, addTransaction, deleteTransaction, currentMonth, salaryHistory, fixedExpenses, creditCards } = useStore();
   const [showModal, setShowModal] = useState(false);
   const [form, setForm] = useState(emptyForm());
   const [search, setSearch] = useState('');
@@ -58,7 +58,7 @@ export default function Transactions() {
   }, [monthTx, filterPerson, filterType, filterCategory, filterPayment, search]);
 
   // Receitas = salários + transações de entrada do mês
-  const salaryIncome = salaries.Leonardo + salaries.Serena;
+  const salaryIncome = getSalaryForMonth(salaryHistory.Leonardo, currentMonth) + getSalaryForMonth(salaryHistory.Serena, currentMonth);
   const txIncome = monthTx.filter((t) => t.type === 'income').reduce((s, t) => s + t.amount, 0);
   const totalIncome = salaryIncome + txIncome;
 

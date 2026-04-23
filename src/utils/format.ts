@@ -70,6 +70,15 @@ export const categoryColors: Record<string, string> = {
   'Serviços': '#64748b',
 };
 
+/** Returns the salary for a given month using carry-forward logic.
+ *  Finds the latest history entry with month <= ym. */
+export function getSalaryForMonth(history: Record<string, number>, ym: string): number {
+  const entries = Object.entries(history)
+    .filter(([m]) => m <= ym)
+    .sort((a, b) => a[0].localeCompare(b[0]));
+  return entries.length > 0 ? entries[entries.length - 1][1] : 0;
+}
+
 export const investmentColors: Record<string, string> = {
   'CDB': '#7c3aed',
   'LCI': '#a855f7',

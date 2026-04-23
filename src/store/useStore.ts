@@ -18,7 +18,8 @@ interface AppState {
   activePage: string;
   isLoading: boolean;
   dbError: string | null;
-  salaries: { Leonardo: number; Serena: number };
+  salaries: { Leonardo: number; Serena: number }; // kept for compat: current-month values
+  salaryHistory: { Leonardo: Record<string, number>; Serena: Record<string, number> };
 
   // Init
   initData: () => Promise<void>;
@@ -27,6 +28,7 @@ interface AppState {
   setActivePage: (page: string) => void;
   setCurrentMonth: (month: string) => void;
   setSalary: (person: 'Leonardo' | 'Serena', value: number) => void;
+  setSalaryForMonth: (person: 'Leonardo' | 'Serena', month: string, value: number) => void;
 
   // Transactions
   addTransaction: (t: Transaction) => void;
@@ -72,22 +74,35 @@ export const useStore = create<AppState>()((set, get) => ({
   isLoading:     true,
   dbError:       null,
   salaries:      { Leonardo: 0, Serena: 0 },
+  salaryHistory: { Leonardo: {}, Serena: {} },
 
   // ─── Init: load from Supabase ──────────────────────────────
   initData: async () => {
     set({ isLoading: true, dbError: null });
     try {
-      const [tx, fx, inv, jars, docs, cc, salLeo, salSer] = await Promise.all([
+      const [tx, fx, inv, jars, docs, cc, salLeo, salSer, histLeo, histSer] = await Promise.all([
         txDB.getAll(), fxDB.getAll(), invDB.getAll(),
         jarDB.getAll(), docDB.getAll(),
         creditCardDB.getAll(),
         settingsDB.get('salary_Leonardo'),
         settingsDB.get('salary_Serena'),
+        settingsDB.get('salary_history_Leonardo'),
+        settingsDB.get('salary_history_Serena'),
       ]);
+
+      // Build salary history (migrate from legacy single-value if needed)
+      const parseHistory = (raw: string | null, legacyVal: string | null): Record<string, number> => {
+        if (raw) { try { return JSON.parse(raw); } catch { /* fall through */ } }
+        if (legacyVal) return { '2026-01': Number(legacyVal) };
+        return {};
+      };
+      const leoHistory = parseHistory(histLeo, salLeo);
+      const serHistory = parseHistory(histSer, salSer);
 
       // Load credit cards and salaries (non-fatal if missing)
       if (!cc.error) set({ creditCards: cc.data });
       set({
+        salaryHistory: { Leonardo: leoHistory, Serena: serHistory },
         salaries: {
           Leonardo: salLeo ? Number(salLeo) : 0,
           Serena:   salSer ? Number(salSer) : 0,
@@ -141,6 +156,14 @@ export const useStore = create<AppState>()((set, get) => ({
   setSalary: (person, value) => {
     set((s) => ({ salaries: { ...s.salaries, [person]: value } }));
     settingsDB.set(`salary_${person}`, String(value));
+  },
+  setSalaryForMonth: (person, month, value) => {
+    set((s) => {
+      const updated = { ...s.salaryHistory[person], [month]: value };
+      return { salaryHistory: { ...s.salaryHistory, [person]: updated } };
+    });
+    const history = { ...get().salaryHistory[person], [month]: value };
+    settingsDB.set(`salary_history_${person}`, JSON.stringify(history));
   },
 
   // ─── Transactions ──────────────────────────────────────────

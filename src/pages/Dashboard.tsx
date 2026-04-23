@@ -8,7 +8,7 @@ import { ArrowUpRight, ArrowDownRight, TrendingUp, CreditCard, Plus, Pencil } fr
 import { useStore } from '../store/useStore';
 import {
   formatCurrency, formatShortDate, isInMonth,
-  categoryColors, formatMonthShort, prevMonth, generateId,
+  categoryColors, formatMonthShort, prevMonth, generateId, getSalaryForMonth,
 } from '../utils/format';
 import type { CreditCard as CreditCardType, Person } from '../types';
 
@@ -44,7 +44,7 @@ const ChartTooltip = ({ active, payload, label }: any) => {
 
 /* ── Main Dashboard ──────────────────────────────────────── */
 export default function Dashboard() {
-  const { transactions, fixedExpenses, investments, savingsJars, currentMonth, creditCards, addCreditCard, updateCreditCard, salaries } = useStore();
+  const { transactions, fixedExpenses, investments, savingsJars, currentMonth, creditCards, addCreditCard, updateCreditCard, salaryHistory } = useStore();
   const [showCCModal, setShowCCModal] = useState(false);
   const [editingCard, setEditingCard] = useState<CreditCardType | null>(null);
   const [ccForm, setCcForm] = useState({ name: '', limit: '', person: 'Casal', color: '#6D28D9' });
@@ -76,7 +76,7 @@ export default function Dashboard() {
   /* Month-level aggregates */
   const m = useMemo(() => {
     const tx           = transactions.filter((t) => isInMonth(t.date, currentMonth));
-    const salaryIncome = salaries.Leonardo + salaries.Serena;
+    const salaryIncome = getSalaryForMonth(salaryHistory.Leonardo, currentMonth) + getSalaryForMonth(salaryHistory.Serena, currentMonth);
     const txIncome     = tx.filter((t) => t.type === 'income').reduce((s, t) => s + t.amount, 0);
     const income       = salaryIncome + txIncome;
     const fixed        = fixedExpenses.filter((f) => f.active).reduce((s, f) => s + f.amount, 0);
@@ -104,7 +104,7 @@ export default function Dashboard() {
       .reduce((s, t) => s + t.amount, 0);
 
     return { income, salaryIncome, txIncome, expenses, fixed, txExpenses, balance, rate, invested, jars, net, score: Math.min(100, score), ccSpending, perCardSpending };
-  }, [transactions, fixedExpenses, investments, savingsJars, currentMonth, salaries]);
+  }, [transactions, fixedExpenses, investments, savingsJars, currentMonth, salaryHistory]);
 
   /* 6-month chart */
   const chartData = useMemo(() => {
@@ -119,11 +119,11 @@ export default function Dashboard() {
       const tx = transactions.filter((t) => isInMonth(t.date, mon));
       return {
         name: formatMonthShort(mon),
-        Receitas: (salaries.Leonardo + salaries.Serena) + tx.filter((t) => t.type === 'income').reduce((s, t) => s + t.amount, 0),
+        Receitas: (getSalaryForMonth(salaryHistory.Leonardo, mon) + getSalaryForMonth(salaryHistory.Serena, mon)) + tx.filter((t) => t.type === 'income').reduce((s, t) => s + t.amount, 0),
         Despesas: fixedTotal + tx.filter((t) => t.type === 'expense').reduce((s, t) => s + t.amount, 0),
       };
     });
-  }, [transactions, fixedExpenses, currentMonth, salaries]);
+  }, [transactions, fixedExpenses, currentMonth, salaryHistory]);
 
   /* Recent transactions */
   const recentTx = useMemo(() =>

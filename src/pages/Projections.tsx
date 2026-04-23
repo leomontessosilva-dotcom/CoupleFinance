@@ -4,7 +4,7 @@ import {
   ResponsiveContainer, Legend,
 } from 'recharts';
 import { useStore } from '../store/useStore';
-import { formatCurrency, prevMonth, formatMonthShort } from '../utils/format';
+import { formatCurrency, prevMonth, formatMonthShort, getSalaryForMonth } from '../utils/format';
 import type { SavingsJar, Transaction } from '../types';
 
 /* ── Helpers ──────────────────────────────────────────────── */
@@ -79,7 +79,7 @@ const ChartTooltip = ({ active, payload, label }: any) => {
 
 /* ── Main Page ────────────────────────────────────────────── */
 export default function Projections() {
-  const { savingsJars, transactions, currentMonth, salaries, fixedExpenses } = useStore();
+  const { savingsJars, transactions, currentMonth, salaryHistory, fixedExpenses } = useStore();
   const [horizon, setHorizon] = useState<6 | 12 | 24 | 36>(12);
 
   const jarsWithYield = savingsJars.filter((j) => j.yieldRate && j.yieldRate > 0);
@@ -151,7 +151,7 @@ export default function Projections() {
   const COLORS = ['#6D28D9', '#D5197A', '#047857', '#B45309', '#1D4ED8', '#DC2626', '#8B5CF6', '#10B981'];
 
   // Cash flow projection: salary + jar yields vs fixed expenses
-  const monthlyIncome = salaries.Leonardo + salaries.Serena;
+  const monthlyIncome = getSalaryForMonth(salaryHistory.Leonardo, currentMonth) + getSalaryForMonth(salaryHistory.Serena, currentMonth);
   const monthlyFixed = fixedExpenses.filter((f) => f.active).reduce((s, f) => s + f.amount, 0);
   const monthlyJarContribs = savingsJars.reduce((s, j) => s + j.monthlyContribution, 0);
   const monthlyCashFlow = monthlyIncome - monthlyFixed - monthlyJarContribs;
@@ -483,11 +483,11 @@ export default function Projections() {
               <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12 }}>
                   <span style={{ color: 'var(--text-2)' }}>Salário Leo</span>
-                  <span style={{ fontFamily: 'Fraunces, serif', color: 'var(--green)' }}>{formatCurrency(salaries.Leonardo)}</span>
+                  <span style={{ fontFamily: 'Fraunces, serif', color: 'var(--green)' }}>{formatCurrency(getSalaryForMonth(salaryHistory.Leonardo, currentMonth))}</span>
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12 }}>
                   <span style={{ color: 'var(--text-2)' }}>Salário Serena</span>
-                  <span style={{ fontFamily: 'Fraunces, serif', color: 'var(--green)' }}>{formatCurrency(salaries.Serena)}</span>
+                  <span style={{ fontFamily: 'Fraunces, serif', color: 'var(--green)' }}>{formatCurrency(getSalaryForMonth(salaryHistory.Serena, currentMonth))}</span>
                 </div>
               </div>
             </div>
