@@ -2,7 +2,21 @@ import { create } from 'zustand';
 import type { Transaction, FixedExpense, Investment, SavingsJar, UploadedDocument } from '../types';
 import type { CreditCard } from '../types';
 import { txDB, fxDB, invDB, jarDB, docDB, creditCardDB, settingsDB } from '../lib/db';
-import { generateId } from '../utils/format';
+import { generateId, getSalaryForMonth, prevMonth } from '../utils/format';
+
+const salaryTxId = (person: 'Leonardo' | 'Serena', month: string) => `salary_${person}_${month}`;
+
+// Builds a canonical "Salário" transaction for a given person/month.
+// Date = day 5 of the month (typical payday).
+const buildSalaryTx = (person: 'Leonardo' | 'Serena', month: string, amount: number): Transaction => ({
+  id: salaryTxId(person, month),
+  type: 'income',
+  category: 'Salário',
+  description: `Salário ${person}`,
+  amount,
+  date: `${month}-05`,
+  person,
+});
 
 interface AppState {
   // Data
@@ -29,6 +43,10 @@ interface AppState {
   setCurrentMonth: (month: string) => void;
   setSalary: (person: 'Leonardo' | 'Serena', value: number) => void;
   setSalaryForMonth: (person: 'Leonardo' | 'Serena', month: string, value: number) => void;
+
+  // Ensures a "Salário" transaction exists for each person for the given month.
+  // Uses carry-forward from salaryHistory. Idempotent.
+  ensureSalaryTransactions: (month: string) => void;
 
   // Transactions
   addTransaction: (t: Transaction) => void;
@@ -145,6 +163,14 @@ export const useStore = create<AppState>()((set, get) => ({
           isLoading: false,
         });
       }
+
+      // Ensure salary transactions exist for the current month and the last 5
+      // months (so the 6-month chart on the Dashboard lines up).
+      let m = get().currentMonth;
+      for (let i = 0; i < 6; i++) {
+        get().ensureSalaryTransactions(m);
+        m = prevMonth(m);
+      }
     } catch (e: any) {
       set({ isLoading: false, dbError: String(e?.message ?? e) });
     }
@@ -152,18 +178,50 @@ export const useStore = create<AppState>()((set, get) => ({
 
   // ─── UI ────────────────────────────────────────────────────
   setActivePage:   (page)  => set({ activePage: page }),
-  setCurrentMonth: (month) => set({ currentMonth: month }),
+  setCurrentMonth: (month) => {
+    set({ currentMonth: month });
+    get().ensureSalaryTransactions(month);
+  },
   setSalary: (person, value) => {
     set((s) => ({ salaries: { ...s.salaries, [person]: value } }));
     settingsDB.set(`salary_${person}`, String(value));
   },
   setSalaryForMonth: (person, month, value) => {
-    set((s) => {
-      const updated = { ...s.salaryHistory[person], [month]: value };
-      return { salaryHistory: { ...s.salaryHistory, [person]: updated } };
+    // Update in-memory history + persist
+    const newHist = { ...get().salaryHistory[person], [month]: value };
+    set((s) => ({ salaryHistory: { ...s.salaryHistory, [person]: newHist } }));
+    settingsDB.set(`salary_history_${person}`, JSON.stringify(newHist));
+
+    // Create/update the Salário transaction for that specific month
+    const id = salaryTxId(person, month);
+    const existing = get().transactions.find((t) => t.id === id);
+    if (existing) {
+      const updated: Transaction = { ...existing, amount: value };
+      set((s) => ({ transactions: s.transactions.map((t) => (t.id === id ? updated : t)) }));
+      if (value > 0) txDB.update(updated);
+      else {
+        // value = 0 → remove the transaction (no income for that month)
+        set((s) => ({ transactions: s.transactions.filter((t) => t.id !== id) }));
+        txDB.delete(id);
+      }
+    } else if (value > 0) {
+      const t = buildSalaryTx(person, month, value);
+      set((s) => ({ transactions: [t, ...s.transactions] }));
+      txDB.insert(t);
+    }
+  },
+
+  ensureSalaryTransactions: (month) => {
+    const { salaryHistory, transactions } = get();
+    (['Leonardo', 'Serena'] as const).forEach((person) => {
+      const amount = getSalaryForMonth(salaryHistory[person], month);
+      if (amount <= 0) return;
+      const id = salaryTxId(person, month);
+      if (transactions.some((t) => t.id === id)) return;
+      const t = buildSalaryTx(person, month, amount);
+      set((s) => ({ transactions: [t, ...s.transactions] }));
+      txDB.insert(t);
     });
-    const history = { ...get().salaryHistory[person], [month]: value };
-    settingsDB.set(`salary_history_${person}`, JSON.stringify(history));
   },
 
   // ─── Transactions ──────────────────────────────────────────
@@ -238,7 +296,9 @@ export const useStore = create<AppState>()((set, get) => ({
     const jar = jars.find((x) => x.id === id);
     if (jar) jarDB.update(jar);
   },
-  // Like addToJar but also records a linked transaction for monthly tracking
+  // Like addToJar but also records a linked transaction for monthly tracking.
+  // amount > 0 = deposit (money leaves the balance, category 'Aporte')
+  // amount < 0 = withdrawal (money returns to the balance, 'Outros Ganhos')
   contributeToJar: (id, amount) => {
     const prevJar = get().savingsJars.find((x) => x.id === id);
     if (!prevJar) return;
@@ -251,11 +311,12 @@ export const useStore = create<AppState>()((set, get) => ({
 
     const absAmt = Math.abs(amount);
     if (absAmt === 0) return;
+    const isDeposit = amount > 0;
     const t: Transaction = {
       id: generateId(),
-      type: amount > 0 ? 'income' : 'expense',
-      category: 'Outros',
-      description: amount > 0 ? `Aporte: ${prevJar.name}` : `Retirada: ${prevJar.name}`,
+      type: isDeposit ? 'expense' : 'income',
+      category: isDeposit ? 'Aporte' : 'Outros Ganhos',
+      description: isDeposit ? `Aporte: ${prevJar.name}` : `Retirada: ${prevJar.name}`,
       amount: absAmt,
       date: new Date().toISOString().split('T')[0],
       person: 'Casal',

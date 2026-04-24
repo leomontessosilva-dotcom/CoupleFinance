@@ -18,6 +18,9 @@ const txToDb = (t: Transaction) => ({
   payment_method: t.paymentMethod ?? null,
   savings_jar_id: t.savingsJarId ?? null,
   credit_card_id: t.creditCardId ?? null,
+  purchase_id: t.purchaseId ?? null,
+  installment_number: t.installmentNumber ?? null,
+  installments_total: t.installmentsTotal ?? null,
 });
 const txFromDb = (r: any): Transaction => ({
   id: r.id, type: r.type, category: r.category,
@@ -26,6 +29,9 @@ const txFromDb = (r: any): Transaction => ({
   paymentMethod: r.payment_method ?? undefined,
   savingsJarId: r.savings_jar_id ?? undefined,
   creditCardId: r.credit_card_id ?? undefined,
+  purchaseId: r.purchase_id ?? undefined,
+  installmentNumber: r.installment_number != null ? Number(r.installment_number) : undefined,
+  installmentsTotal: r.installments_total != null ? Number(r.installments_total) : undefined,
 });
 
 const fxToDb = (f: FixedExpense) => ({

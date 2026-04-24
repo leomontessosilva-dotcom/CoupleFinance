@@ -46,6 +46,18 @@ export const nextMonth = (ym: string): string => {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
 };
 
+/** Add N months to a YYYY-MM-DD date, clamping the day to the month's last
+ *  day when it doesn't exist (e.g. Jan 31 + 1 month = Feb 28/29). */
+export const addMonthsToDate = (dateStr: string, months: number): string => {
+  const [y, m, d] = dateStr.split('-').map(Number);
+  const totalMonthsFromZero = (y * 12) + (m - 1) + months;
+  const targetYear  = Math.floor(totalMonthsFromZero / 12);
+  const targetMonth = (totalMonthsFromZero % 12) + 1;
+  const lastDay = new Date(targetYear, targetMonth, 0).getDate();
+  const day = Math.min(d, lastDay);
+  return `${targetYear}-${String(targetMonth).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+};
+
 export const formatFileSize = (bytes: number): string => {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
@@ -66,6 +78,7 @@ export const categoryColors: Record<string, string> = {
   'Assinaturas': '#6366f1',
   'Roupas': '#e879f9',
   'Viagem': '#0ea5e9',
+  'Aporte': '#059669',
   'Outros': '#9ca3af',
   'Serviços': '#64748b',
 };
