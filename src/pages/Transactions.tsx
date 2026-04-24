@@ -1,12 +1,12 @@
 import { useState, useMemo } from 'react';
 import { createPortal } from 'react-dom';
-import { Plus, Trash2, Search, Download, ArrowUpRight, ArrowDownRight } from 'lucide-react';
+import { Plus, Trash2, Search, Download, ArrowUpRight, ArrowDownRight, Pencil } from 'lucide-react';
 import { useStore } from '../store/useStore';
-import { formatCurrency, formatDate, isInMonth, categoryColors, generateId, getSalaryForMonth } from '../utils/format';
+import { formatCurrency, formatDate, isInMonth, categoryColors, generateId, addMonthsToDate } from '../utils/format';
 import type { Transaction, TransactionType, TransactionCategory, Person, PaymentMethod } from '../types';
 
 const INCOME_CATEGORIES: TransactionCategory[] = ['Salário', 'Freelance', 'Investimentos', 'Outros Ganhos'];
-const EXPENSE_CATEGORIES: TransactionCategory[] = ['Moradia', 'Transporte', 'Alimentação', 'Saúde', 'Educação', 'Lazer', 'Assinaturas', 'Roupas', 'Viagem', 'Outros'];
+const EXPENSE_CATEGORIES: TransactionCategory[] = ['Moradia', 'Transporte', 'Alimentação', 'Saúde', 'Educação', 'Lazer', 'Assinaturas', 'Roupas', 'Viagem', 'Aporte', 'Outros'];
 const ALL_CATEGORIES = [...INCOME_CATEGORIES, ...EXPENSE_CATEGORIES];
 
 const PAYMENT_METHODS: { value: PaymentMethod; label: string }[] = [
@@ -21,7 +21,12 @@ const PAYMENT_LABELS: Record<string, string> = {
   credito: 'Crédito', debito: 'Débito', pix: 'Pix', dinheiro: 'Dinheiro', outro: 'Outro',
 };
 
-const emptyForm = (): Partial<Transaction> => ({
+// Form carries an extra UI-only `installments` field to control how the
+// purchase is split when paymentMethod === 'credito'. It's never persisted
+// directly; instead it drives how many child transactions we create on save.
+type TransactionForm = Partial<Transaction> & { installments?: number };
+
+const emptyForm = (): TransactionForm => ({
   type: 'expense',
   category: 'Alimentação',
   description: '',
@@ -30,11 +35,13 @@ const emptyForm = (): Partial<Transaction> => ({
   person: 'Casal',
   paymentMethod: undefined,
   creditCardId: undefined,
+  installments: 1,
 });
 
 export default function Transactions() {
-  const { transactions, addTransaction, deleteTransaction, currentMonth, salaryHistory, fixedExpenses, creditCards } = useStore();
+  const { transactions, addTransaction, updateTransaction, deleteTransaction, currentMonth, fixedExpenses, creditCards } = useStore();
   const [showModal, setShowModal] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState(emptyForm());
   const [search, setSearch] = useState('');
   const [filterPerson, setFilterPerson] = useState<string>('all');
@@ -57,32 +64,128 @@ export default function Transactions() {
     }).sort((a, b) => b.date.localeCompare(a.date));
   }, [monthTx, filterPerson, filterType, filterCategory, filterPayment, search]);
 
-  // Receitas = salários + transações de entrada do mês
-  const salaryIncome = getSalaryForMonth(salaryHistory.Leonardo, currentMonth) + getSalaryForMonth(salaryHistory.Serena, currentMonth);
-  const txIncome = monthTx.filter((t) => t.type === 'income').reduce((s, t) => s + t.amount, 0);
-  const totalIncome = salaryIncome + txIncome;
+  // Receitas = transações de entrada do mês (salário agora é uma transação auto-gerada)
+  const salaryIncome = monthTx.filter((t) => t.type === 'income' && t.category === 'Salário').reduce((s, t) => s + t.amount, 0);
+  const totalIncome = monthTx.filter((t) => t.type === 'income').reduce((s, t) => s + t.amount, 0);
 
-  // Despesas = gastos fixos ativos + transações de saída do mês
+  // Despesas = gastos fixos + transações de saída do mês (incluindo aportes,
+  // pois saem do saldo; no card são somados junto mas mostrados com breakdown)
   const fixedTotal = fixedExpenses.filter((f) => f.active).reduce((s, f) => s + f.amount, 0);
-  const txExpenses = monthTx.filter((t) => t.type === 'expense').reduce((s, t) => s + t.amount, 0);
-  const totalExpenses = fixedTotal + txExpenses;
+  const aportesTotal = monthTx.filter((t) => t.type === 'expense' && t.category === 'Aporte').reduce((s, t) => s + t.amount, 0);
+  const spendingTotal = monthTx.filter((t) => t.type === 'expense' && t.category !== 'Aporte').reduce((s, t) => s + t.amount, 0);
+  const totalExpenses = fixedTotal + spendingTotal + aportesTotal;
 
-  const handleAdd = () => {
+  const handleSave = () => {
     if (!form.description || !form.amount) return;
-    const t: Transaction = {
-      id: generateId(),
-      type: form.type as TransactionType,
-      category: form.category as TransactionCategory,
-      description: form.description!,
-      amount: Number(form.amount),
-      date: form.date!,
-      person: form.person as Person,
-      paymentMethod: form.paymentMethod as PaymentMethod | undefined,
-      creditCardId: form.paymentMethod === 'credito' ? form.creditCardId : undefined,
-    };
-    addTransaction(t);
+
+    const isCredit     = form.paymentMethod === 'credito';
+    const installments = isCredit ? Math.max(1, Math.min(60, Number(form.installments) || 1)) : 1;
+    const isSplit      = installments > 1 && !editingId;
+
+    // Editing an existing transaction: single update, no installment expansion
+    if (editingId) {
+      const t: Transaction = {
+        id: editingId,
+        type: form.type as TransactionType,
+        category: form.category as TransactionCategory,
+        description: form.description!,
+        amount: Number(form.amount),
+        date: form.date!,
+        person: form.person as Person,
+        paymentMethod: form.paymentMethod as PaymentMethod | undefined,
+        creditCardId: isCredit ? form.creditCardId : undefined,
+        savingsJarId: form.savingsJarId,
+        purchaseId: form.purchaseId,
+        installmentNumber: form.installmentNumber,
+        installmentsTotal: form.installmentsTotal,
+      };
+      updateTransaction(t);
+    } else if (isSplit) {
+      // New purchase split into N installments — each is its own Transaction
+      const purchaseId = generateId();
+      const per = Math.round((Number(form.amount) / installments) * 100) / 100;
+      // Distribute rounding residue onto installment 1 so the sum matches exactly
+      const residue = Math.round((Number(form.amount) - per * installments) * 100) / 100;
+      for (let i = 1; i <= installments; i++) {
+        const t: Transaction = {
+          id: generateId(),
+          type: form.type as TransactionType,
+          category: form.category as TransactionCategory,
+          description: `${form.description} (${i}/${installments})`,
+          amount: i === 1 ? per + residue : per,
+          date: addMonthsToDate(form.date!, i - 1),
+          person: form.person as Person,
+          paymentMethod: 'credito',
+          creditCardId: form.creditCardId,
+          savingsJarId: form.savingsJarId,
+          purchaseId,
+          installmentNumber: i,
+          installmentsTotal: installments,
+        };
+        addTransaction(t);
+      }
+    } else {
+      // New, single transaction (cash/PIX/debit, or 1x credit)
+      const t: Transaction = {
+        id: generateId(),
+        type: form.type as TransactionType,
+        category: form.category as TransactionCategory,
+        description: form.description!,
+        amount: Number(form.amount),
+        date: form.date!,
+        person: form.person as Person,
+        paymentMethod: form.paymentMethod as PaymentMethod | undefined,
+        creditCardId: isCredit ? form.creditCardId : undefined,
+        savingsJarId: form.savingsJarId,
+      };
+      addTransaction(t);
+    }
     setShowModal(false);
+    setEditingId(null);
     setForm(emptyForm());
+  };
+
+  const openEdit = (t: Transaction) => {
+    setEditingId(t.id);
+    setForm({
+      type: t.type, category: t.category, description: t.description,
+      amount: t.amount, date: t.date, person: t.person,
+      paymentMethod: t.paymentMethod, creditCardId: t.creditCardId,
+      savingsJarId: t.savingsJarId,
+      purchaseId: t.purchaseId,
+      installmentNumber: t.installmentNumber,
+      installmentsTotal: t.installmentsTotal,
+      installments: 1, // edit is per-installment, not per-purchase
+    });
+    setShowModal(true);
+  };
+
+  const openNew = () => {
+    setEditingId(null);
+    setForm(emptyForm());
+    setShowModal(true);
+  };
+
+  const closeModal = () => {
+    setShowModal(false);
+    setEditingId(null);
+  };
+
+  const handleDelete = (t: Transaction) => {
+    // If this is part of an installment purchase, ask whether to delete just
+    // this one or the whole purchase (all remaining installments).
+    if (t.purchaseId && t.installmentsTotal && t.installmentsTotal > 1) {
+      const all = transactions.filter((x) => x.purchaseId === t.purchaseId);
+      const remaining = all.length;
+      const msg = `Esta é a parcela ${t.installmentNumber}/${t.installmentsTotal}. A compra toda tem ${remaining} parcela(s) registrada(s).\n\nOK = excluir esta parcela apenas.\nCancelar = excluir a compra inteira (todas as parcelas).`;
+      if (window.confirm(msg)) {
+        deleteTransaction(t.id);
+      } else {
+        all.forEach((x) => deleteTransaction(x.id));
+      }
+    } else {
+      deleteTransaction(t.id);
+    }
   };
 
   const exportCSV = () => {
@@ -131,9 +234,11 @@ export default function Transactions() {
               <p style={{ fontFamily: 'Fraunces, serif', fontSize: '1.2rem', fontWeight: 400, color: '#dc2626', letterSpacing: '-0.02em', lineHeight: 1 }}>
                 {formatCurrency(totalExpenses)}
               </p>
-              {fixedTotal > 0 && (
+              {(fixedTotal > 0 || aportesTotal > 0) && (
                 <p style={{ fontSize: 10, color: 'var(--text-3)', marginTop: 2 }}>
-                  Fixos: {formatCurrency(fixedTotal)}
+                  {fixedTotal > 0 && `Fixos ${formatCurrency(fixedTotal)}`}
+                  {fixedTotal > 0 && aportesTotal > 0 && ' · '}
+                  {aportesTotal > 0 && `Aportes ${formatCurrency(aportesTotal)}`}
                 </p>
               )}
             </div>
@@ -168,7 +273,7 @@ export default function Transactions() {
           <button onClick={exportCSV} className="btn-outline hide-on-mobile" style={{ display: 'flex', alignItems: 'center', gap: 5, whiteSpace: 'nowrap' }}>
             <Download size={13} /> Exportar
           </button>
-          <button onClick={() => { setForm(emptyForm()); setShowModal(true); }} className="gradient-btn" style={{ whiteSpace: 'nowrap' }}>
+          <button onClick={openNew} className="gradient-btn" style={{ whiteSpace: 'nowrap' }}>
             <Plus size={15} /> Adicionar
           </button>
         </div>
@@ -274,13 +379,24 @@ export default function Transactions() {
                     </span>
                   </td>
                   <td style={{ padding: '11px 8px' }}>
-                    <button onClick={() => deleteTransaction(tx.id)}
-                      style={{ width: 26, height: 26, borderRadius: 6, border: 'none', cursor: 'pointer', background: 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#f87171' }}
-                      onMouseEnter={(e) => (e.currentTarget.style.background = '#FEE2E2')}
-                      onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
-                    >
-                      <Trash2 size={12} />
-                    </button>
+                    <div style={{ display: 'flex', gap: 2 }}>
+                      <button onClick={() => openEdit(tx)}
+                        style={{ width: 26, height: 26, borderRadius: 6, border: 'none', cursor: 'pointer', background: 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-3)' }}
+                        onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(0,0,0,0.04)')}
+                        onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+                        title="Editar"
+                      >
+                        <Pencil size={12} />
+                      </button>
+                      <button onClick={() => handleDelete(tx)}
+                        style={{ width: 26, height: 26, borderRadius: 6, border: 'none', cursor: 'pointer', background: 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#f87171' }}
+                        onMouseEnter={(e) => (e.currentTarget.style.background = '#FEE2E2')}
+                        onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+                        title="Excluir"
+                      >
+                        <Trash2 size={12} />
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -306,14 +422,17 @@ export default function Transactions() {
                   {tx.person !== 'Casal' && ` · ${tx.person === 'Leonardo' ? 'Leo' : 'Serena'}`}
                 </p>
               </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
                 <span style={{ fontFamily: 'Fraunces, serif', fontSize: 14, fontWeight: 400, letterSpacing: '-0.01em', color: tx.type === 'income' ? 'var(--green)' : 'var(--red)' }}>
                   {tx.type === 'income' ? '+' : '−'}{formatCurrency(tx.amount)}
                 </span>
-                <button onClick={() => deleteTransaction(tx.id)}
+                <button onClick={() => openEdit(tx)}
                   style={{ width: 28, height: 28, borderRadius: 7, border: 'none', cursor: 'pointer', background: 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-                  onTouchStart={(e) => (e.currentTarget.style.background = '#FEE2E2')}
-                  onTouchEnd={(e) => (e.currentTarget.style.background = 'transparent')}
+                >
+                  <Pencil size={12} color="var(--text-3)" />
+                </button>
+                <button onClick={() => handleDelete(tx)}
+                  style={{ width: 28, height: 28, borderRadius: 7, border: 'none', cursor: 'pointer', background: 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
                 >
                   <Trash2 size={13} color="#f87171" />
                 </button>
@@ -324,12 +443,12 @@ export default function Transactions() {
 
       </div>
 
-      {/* Add modal — portal so position:fixed is relative to viewport, not page */}
+      {/* Add/Edit modal — portal so position:fixed is relative to viewport, not page */}
       {showModal && createPortal(
-        <div className="modal-overlay" onClick={() => setShowModal(false)}>
+        <div className="modal-overlay" onClick={closeModal}>
           <div className="modal-panel" onClick={(e) => e.stopPropagation()}>
             <h3 style={{ fontFamily: 'Fraunces, serif', fontSize: '1.25rem', fontWeight: 300, color: 'var(--text-1)', letterSpacing: '-0.02em', marginBottom: 20 }}>
-              Nova Transação
+              {editingId ? 'Editar Transação' : 'Nova Transação'}
             </h3>
 
             {/* Type toggle */}
@@ -412,11 +531,37 @@ export default function Transactions() {
                 </div>
               )}
 
+              {/* Installments — only for NEW credit-card purchases.
+                  When editing an existing installment, this is hidden
+                  because edits are per-installment, not per-purchase. */}
+              {form.paymentMethod === 'credito' && !editingId && (
+                <div>
+                  <label className="f-label">Parcelas</label>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <input type="number" min={1} max={60} className="input" style={{ width: 80 }}
+                      value={form.installments ?? 1}
+                      onChange={(e) => setForm({ ...form, installments: Math.max(1, Math.min(60, parseInt(e.target.value) || 1)) })} />
+                    <span style={{ fontSize: 12, color: 'var(--text-3)' }}>
+                      {(form.installments ?? 1) > 1
+                        ? `${(form.installments ?? 1)}× de ${formatCurrency((Number(form.amount) || 0) / (form.installments ?? 1))}`
+                        : 'À vista (1x)'}
+                    </span>
+                  </div>
+                </div>
+              )}
+
+              {/* Info banner when editing a specific installment */}
+              {editingId && form.installmentsTotal && form.installmentsTotal > 1 && (
+                <div style={{ padding: '10px 12px', background: 'var(--surface-2)', borderRadius: 8, fontSize: 12, color: 'var(--text-2)' }}>
+                  Editando parcela <strong>{form.installmentNumber}/{form.installmentsTotal}</strong>. Mudanças afetam só esta parcela.
+                </div>
+              )}
+
               <div style={{ display: 'flex', gap: 8, paddingTop: 4 }}>
-                <button className="btn-primary" style={{ flex: 1, justifyContent: 'center' }} onClick={handleAdd}>
-                  Salvar
+                <button className="btn-primary" style={{ flex: 1, justifyContent: 'center' }} onClick={handleSave}>
+                  {editingId ? 'Atualizar' : 'Salvar'}
                 </button>
-                <button className="btn-secondary" style={{ flex: 1, justifyContent: 'center' }} onClick={() => setShowModal(false)}>
+                <button className="btn-secondary" style={{ flex: 1, justifyContent: 'center' }} onClick={closeModal}>
                   Cancelar
                 </button>
               </div>

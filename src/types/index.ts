@@ -5,7 +5,7 @@ export type TransactionType = 'income' | 'expense';
 export type TransactionCategory =
   | 'Salário' | 'Freelance' | 'Investimentos' | 'Outros Ganhos'
   | 'Moradia' | 'Transporte' | 'Alimentação' | 'Saúde' | 'Educação'
-  | 'Lazer' | 'Assinaturas' | 'Roupas' | 'Viagem' | 'Outros';
+  | 'Lazer' | 'Assinaturas' | 'Roupas' | 'Viagem' | 'Aporte' | 'Outros';
 
 export type PaymentMethod = 'credito' | 'debito' | 'pix' | 'dinheiro' | 'outro';
 
@@ -20,6 +20,11 @@ export interface Transaction {
   paymentMethod?: PaymentMethod;
   savingsJarId?: string;
   creditCardId?: string;
+  // Installments: when a credit purchase is split, each installment becomes
+  // its own Transaction. purchaseId groups them; installmentNumber is 1..N.
+  purchaseId?: string;
+  installmentNumber?: number;
+  installmentsTotal?: number;
 }
 
 export type FixedExpenseCategory =

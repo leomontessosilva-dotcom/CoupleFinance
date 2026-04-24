@@ -8,7 +8,7 @@ import { ArrowUpRight, ArrowDownRight, TrendingUp, CreditCard, Plus, Pencil } fr
 import { useStore } from '../store/useStore';
 import {
   formatCurrency, formatShortDate, isInMonth,
-  categoryColors, formatMonthShort, prevMonth, generateId, getSalaryForMonth,
+  categoryColors, formatMonthShort, prevMonth, generateId,
 } from '../utils/format';
 import type { CreditCard as CreditCardType, Person } from '../types';
 
@@ -44,7 +44,7 @@ const ChartTooltip = ({ active, payload, label }: any) => {
 
 /* ── Main Dashboard ──────────────────────────────────────── */
 export default function Dashboard() {
-  const { transactions, fixedExpenses, investments, savingsJars, currentMonth, creditCards, addCreditCard, updateCreditCard, salaryHistory } = useStore();
+  const { transactions, fixedExpenses, investments, savingsJars, currentMonth, creditCards, addCreditCard, updateCreditCard } = useStore();
   const [showCCModal, setShowCCModal] = useState(false);
   const [editingCard, setEditingCard] = useState<CreditCardType | null>(null);
   const [ccForm, setCcForm] = useState({ name: '', limit: '', person: 'Casal', color: '#6D28D9' });
@@ -73,20 +73,25 @@ export default function Dashboard() {
     setCcForm({ name: '', limit: '', person: 'Casal', color: '#6D28D9' });
   };
 
-  /* Month-level aggregates */
+  /* Month-level aggregates
+     Salary is now a regular transaction (id = salary_{person}_{month}), so
+     it's already included in txIncome — no separate salaryIncome sum.
+     Aportes (category 'Aporte') are expenses for cash-flow purposes but are
+     tracked separately from 'real' spending. */
   const m = useMemo(() => {
     const tx           = transactions.filter((t) => isInMonth(t.date, currentMonth));
-    const salaryIncome = getSalaryForMonth(salaryHistory.Leonardo, currentMonth) + getSalaryForMonth(salaryHistory.Serena, currentMonth);
-    const txIncome     = tx.filter((t) => t.type === 'income').reduce((s, t) => s + t.amount, 0);
-    const income       = salaryIncome + txIncome;
+    const salaryIncome = tx.filter((t) => t.type === 'income' && t.category === 'Salário').reduce((s, t) => s + t.amount, 0);
+    const income       = tx.filter((t) => t.type === 'income').reduce((s, t) => s + t.amount, 0);
     const fixed        = fixedExpenses.filter((f) => f.active).reduce((s, f) => s + f.amount, 0);
-    const txExpenses   = tx.filter((t) => t.type === 'expense').reduce((s, t) => s + t.amount, 0);
-    const expenses     = fixed + txExpenses;
-    const balance      = income - expenses;
+    const aportes      = tx.filter((t) => t.type === 'expense' && t.category === 'Aporte').reduce((s, t) => s + t.amount, 0);
+    const txExpenses   = tx.filter((t) => t.type === 'expense' && t.category !== 'Aporte').reduce((s, t) => s + t.amount, 0);
+    const expenses     = fixed + txExpenses;           // real spending
+    const outflow      = expenses + aportes;           // total money out
+    const balance      = income - outflow;
     const rate         = income > 0 ? (balance / income) * 100 : 0;
     const invested     = investments.reduce((s, i) => s + i.currentValue, 0);
     const jars         = savingsJars.reduce((s, j) => s + j.currentValue, 0);
-    const net          = invested + jars + Math.max(0, balance);
+    const net          = invested + jars + balance;
 
     // Health score: savings rate (40pt) + fixed ratio (30pt) + investment wealth (30pt)
     let score = 0;
@@ -103,10 +108,11 @@ export default function Dashboard() {
       .filter((t) => t.type === 'expense' && t.paymentMethod === 'credito')
       .reduce((s, t) => s + t.amount, 0);
 
-    return { income, salaryIncome, txIncome, expenses, fixed, txExpenses, balance, rate, invested, jars, net, score: Math.min(100, score), ccSpending, perCardSpending };
-  }, [transactions, fixedExpenses, investments, savingsJars, currentMonth, salaryHistory]);
+    return { income, salaryIncome, expenses, fixed, txExpenses, aportes, outflow, balance, rate, invested, jars, net, score: Math.min(100, score), ccSpending, perCardSpending };
+  }, [transactions, fixedExpenses, investments, savingsJars, currentMonth]);
 
-  /* 6-month chart */
+  /* 6-month chart — salary is in transactions. Aportes separated so the
+     'Despesas' line reflects real spending only. */
   const chartData = useMemo(() => {
     const months: string[] = [];
     for (let i = 5; i >= 0; i--) {
@@ -117,13 +123,14 @@ export default function Dashboard() {
     const fixedTotal = fixedExpenses.filter((f) => f.active).reduce((s, f) => s + f.amount, 0);
     return months.map((mon) => {
       const tx = transactions.filter((t) => isInMonth(t.date, mon));
+      const expensesOnly = tx.filter((t) => t.type === 'expense' && t.category !== 'Aporte').reduce((s, t) => s + t.amount, 0);
       return {
         name: formatMonthShort(mon),
-        Receitas: (getSalaryForMonth(salaryHistory.Leonardo, mon) + getSalaryForMonth(salaryHistory.Serena, mon)) + tx.filter((t) => t.type === 'income').reduce((s, t) => s + t.amount, 0),
-        Despesas: fixedTotal + tx.filter((t) => t.type === 'expense').reduce((s, t) => s + t.amount, 0),
+        Receitas: tx.filter((t) => t.type === 'income').reduce((s, t) => s + t.amount, 0),
+        Despesas: fixedTotal + expensesOnly,
       };
     });
-  }, [transactions, fixedExpenses, currentMonth, salaryHistory]);
+  }, [transactions, fixedExpenses, currentMonth]);
 
   /* Recent transactions */
   const recentTx = useMemo(() =>
@@ -211,9 +218,9 @@ export default function Dashboard() {
           {[
             { label: 'Receitas do Mês',  value: formatCurrency(m.income),   sub: m.salaryIncome > 0 ? `Salário: ${formatCurrency(m.salaryIncome)}` : undefined, indicator: 'up',   color: 'var(--green)' },
             { label: 'Despesas do Mês',  value: formatCurrency(m.expenses),  sub: m.fixed > 0 ? `Fixos: ${formatCurrency(m.fixed)}` : undefined, indicator: 'down', color: 'var(--red)' },
+            { label: 'Aportes do Mês',   value: formatCurrency(m.aportes),   sub: 'p/ cofrinhos', indicator: null, color: '#059669' },
             { label: 'Saldo',            value: formatCurrency(m.balance),   sub: undefined, indicator: m.balance >= 0 ? 'up' : 'down', color: m.balance >= 0 ? 'var(--green)' : 'var(--red)' },
             { label: 'Taxa de Poupança', value: `${m.rate.toFixed(1)}%`,     sub: undefined, indicator: m.rate >= 20 ? 'up' : 'down', color: m.rate >= 20 ? 'var(--green)' : m.rate >= 10 ? 'var(--amber)' : 'var(--red)' },
-            { label: 'Gastos Fixos',     value: formatCurrency(m.fixed),     sub: undefined, indicator: null, color: 'var(--text-2)' },
             { label: 'Total Investido',  value: formatCurrency(m.invested),  sub: undefined, indicator: 'up', color: 'var(--accent)' },
           ].map((s, i) => (
             <div key={i} className="stat-chip" style={{ flex: 1 }}>
