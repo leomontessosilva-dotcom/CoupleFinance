@@ -29,8 +29,9 @@ export default function FixedExpenses() {
     .sort((a, b) => a.dueDay - b.dueDay);
 
   const totalActive = active.reduce((s, f) => s + f.amount, 0);
-  const leoTotal = active.filter((f) => f.person === 'Leonardo' || f.person === 'Casal').reduce((s, f) => s + f.amount, 0);
-  const serenaTotal = active.filter((f) => f.person === 'Serena' || f.person === 'Casal').reduce((s, f) => s + f.amount, 0);
+  const casalShared = active.filter((f) => f.person === 'Casal').reduce((s, f) => s + f.amount, 0);
+  const leoTotal = active.filter((f) => f.person === 'Leonardo').reduce((s, f) => s + f.amount, 0) + casalShared / 2;
+  const serenaTotal = active.filter((f) => f.person === 'Serena').reduce((s, f) => s + f.amount, 0) + casalShared / 2;
 
   const pieData = useMemo(() => {
     const byCategory: Record<string, number> = {};
@@ -69,7 +70,7 @@ export default function FixedExpenses() {
             <p className="label">Leonardo</p>
           </div>
           <p className="font-display text-2xl font-semibold text-purple-700">{formatCurrency(leoTotal)}</p>
-          <p className="text-xs text-gray-400 mt-1">Pessoal + Casal</p>
+          <p className="text-xs text-gray-400 mt-1">Pessoal + metade do Casal</p>
         </div>
         <div className="stat-card">
           <div className="flex items-center gap-2 mb-1">
@@ -77,7 +78,7 @@ export default function FixedExpenses() {
             <p className="label">Serena</p>
           </div>
           <p className="font-display text-2xl font-semibold text-pink-500">{formatCurrency(serenaTotal)}</p>
-          <p className="text-xs text-gray-400 mt-1">Pessoal + Casal</p>
+          <p className="text-xs text-gray-400 mt-1">Pessoal + metade do Casal</p>
         </div>
       </div>
 

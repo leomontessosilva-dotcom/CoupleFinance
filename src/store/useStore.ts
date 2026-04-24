@@ -222,8 +222,13 @@ export const useStore = create<AppState>()((set, get) => ({
     jarDB.update(j);
   },
   deleteSavingsJar: (id) => {
-    set((s) => ({ savingsJars: s.savingsJars.filter((x) => x.id !== id) }));
+    const orphanTxIds = get().transactions.filter((t) => t.savingsJarId === id).map((t) => t.id);
+    set((s) => ({
+      savingsJars:  s.savingsJars.filter((x) => x.id !== id),
+      transactions: s.transactions.filter((t) => t.savingsJarId !== id),
+    }));
     jarDB.delete(id);
+    orphanTxIds.forEach((txId) => txDB.delete(txId));
   },
   addToJar: (id, amount) => {
     const jars = get().savingsJars.map((x) =>
@@ -280,7 +285,13 @@ export const useStore = create<AppState>()((set, get) => ({
     creditCardDB.update(c);
   },
   deleteCreditCard: (id) => {
-    set((s) => ({ creditCards: s.creditCards.filter((x) => x.id !== id) }));
+    // Unlink transactions from deleted card (keep the transaction, drop the cc link)
+    const linkedTx = get().transactions.filter((t) => t.creditCardId === id);
+    set((s) => ({
+      creditCards:  s.creditCards.filter((x) => x.id !== id),
+      transactions: s.transactions.map((t) => (t.creditCardId === id ? { ...t, creditCardId: undefined } : t)),
+    }));
     creditCardDB.delete(id);
+    linkedTx.forEach((t) => txDB.update({ ...t, creditCardId: undefined }));
   },
 }));

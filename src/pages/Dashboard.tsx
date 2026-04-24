@@ -86,7 +86,7 @@ export default function Dashboard() {
     const rate         = income > 0 ? (balance / income) * 100 : 0;
     const invested     = investments.reduce((s, i) => s + i.currentValue, 0);
     const jars         = savingsJars.reduce((s, j) => s + j.currentValue, 0);
-    const net          = invested + jars + Math.max(0, balance);
+    const net          = invested + jars + balance;
 
     // Health score: savings rate (40pt) + fixed ratio (30pt) + investment wealth (30pt)
     let score = 0;

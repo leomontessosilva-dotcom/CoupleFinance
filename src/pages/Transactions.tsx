@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react';
 import { createPortal } from 'react-dom';
-import { Plus, Trash2, Search, Download, ArrowUpRight, ArrowDownRight } from 'lucide-react';
+import { Plus, Trash2, Search, Download, ArrowUpRight, ArrowDownRight, Pencil } from 'lucide-react';
 import { useStore } from '../store/useStore';
 import { formatCurrency, formatDate, isInMonth, categoryColors, generateId, getSalaryForMonth } from '../utils/format';
 import type { Transaction, TransactionType, TransactionCategory, Person, PaymentMethod } from '../types';
@@ -33,8 +33,9 @@ const emptyForm = (): Partial<Transaction> => ({
 });
 
 export default function Transactions() {
-  const { transactions, addTransaction, deleteTransaction, currentMonth, salaryHistory, fixedExpenses, creditCards } = useStore();
+  const { transactions, addTransaction, updateTransaction, deleteTransaction, currentMonth, salaryHistory, fixedExpenses, creditCards } = useStore();
   const [showModal, setShowModal] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState(emptyForm());
   const [search, setSearch] = useState('');
   const [filterPerson, setFilterPerson] = useState<string>('all');
@@ -67,10 +68,10 @@ export default function Transactions() {
   const txExpenses = monthTx.filter((t) => t.type === 'expense').reduce((s, t) => s + t.amount, 0);
   const totalExpenses = fixedTotal + txExpenses;
 
-  const handleAdd = () => {
+  const handleSave = () => {
     if (!form.description || !form.amount) return;
     const t: Transaction = {
-      id: generateId(),
+      id: editingId ?? generateId(),
       type: form.type as TransactionType,
       category: form.category as TransactionCategory,
       description: form.description!,
@@ -79,10 +80,35 @@ export default function Transactions() {
       person: form.person as Person,
       paymentMethod: form.paymentMethod as PaymentMethod | undefined,
       creditCardId: form.paymentMethod === 'credito' ? form.creditCardId : undefined,
+      savingsJarId: form.savingsJarId,
     };
-    addTransaction(t);
+    if (editingId) updateTransaction(t);
+    else addTransaction(t);
     setShowModal(false);
+    setEditingId(null);
     setForm(emptyForm());
+  };
+
+  const openEdit = (t: Transaction) => {
+    setEditingId(t.id);
+    setForm({
+      type: t.type, category: t.category, description: t.description,
+      amount: t.amount, date: t.date, person: t.person,
+      paymentMethod: t.paymentMethod, creditCardId: t.creditCardId,
+      savingsJarId: t.savingsJarId,
+    });
+    setShowModal(true);
+  };
+
+  const openNew = () => {
+    setEditingId(null);
+    setForm(emptyForm());
+    setShowModal(true);
+  };
+
+  const closeModal = () => {
+    setShowModal(false);
+    setEditingId(null);
   };
 
   const exportCSV = () => {
@@ -168,7 +194,7 @@ export default function Transactions() {
           <button onClick={exportCSV} className="btn-outline hide-on-mobile" style={{ display: 'flex', alignItems: 'center', gap: 5, whiteSpace: 'nowrap' }}>
             <Download size={13} /> Exportar
           </button>
-          <button onClick={() => { setForm(emptyForm()); setShowModal(true); }} className="gradient-btn" style={{ whiteSpace: 'nowrap' }}>
+          <button onClick={openNew} className="gradient-btn" style={{ whiteSpace: 'nowrap' }}>
             <Plus size={15} /> Adicionar
           </button>
         </div>
@@ -274,13 +300,24 @@ export default function Transactions() {
                     </span>
                   </td>
                   <td style={{ padding: '11px 8px' }}>
-                    <button onClick={() => deleteTransaction(tx.id)}
-                      style={{ width: 26, height: 26, borderRadius: 6, border: 'none', cursor: 'pointer', background: 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#f87171' }}
-                      onMouseEnter={(e) => (e.currentTarget.style.background = '#FEE2E2')}
-                      onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
-                    >
-                      <Trash2 size={12} />
-                    </button>
+                    <div style={{ display: 'flex', gap: 2 }}>
+                      <button onClick={() => openEdit(tx)}
+                        style={{ width: 26, height: 26, borderRadius: 6, border: 'none', cursor: 'pointer', background: 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-3)' }}
+                        onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(0,0,0,0.04)')}
+                        onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+                        title="Editar"
+                      >
+                        <Pencil size={12} />
+                      </button>
+                      <button onClick={() => deleteTransaction(tx.id)}
+                        style={{ width: 26, height: 26, borderRadius: 6, border: 'none', cursor: 'pointer', background: 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#f87171' }}
+                        onMouseEnter={(e) => (e.currentTarget.style.background = '#FEE2E2')}
+                        onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+                        title="Excluir"
+                      >
+                        <Trash2 size={12} />
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -306,14 +343,17 @@ export default function Transactions() {
                   {tx.person !== 'Casal' && ` · ${tx.person === 'Leonardo' ? 'Leo' : 'Serena'}`}
                 </p>
               </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
                 <span style={{ fontFamily: 'Fraunces, serif', fontSize: 14, fontWeight: 400, letterSpacing: '-0.01em', color: tx.type === 'income' ? 'var(--green)' : 'var(--red)' }}>
                   {tx.type === 'income' ? '+' : '−'}{formatCurrency(tx.amount)}
                 </span>
+                <button onClick={() => openEdit(tx)}
+                  style={{ width: 28, height: 28, borderRadius: 7, border: 'none', cursor: 'pointer', background: 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                >
+                  <Pencil size={12} color="var(--text-3)" />
+                </button>
                 <button onClick={() => deleteTransaction(tx.id)}
                   style={{ width: 28, height: 28, borderRadius: 7, border: 'none', cursor: 'pointer', background: 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-                  onTouchStart={(e) => (e.currentTarget.style.background = '#FEE2E2')}
-                  onTouchEnd={(e) => (e.currentTarget.style.background = 'transparent')}
                 >
                   <Trash2 size={13} color="#f87171" />
                 </button>
@@ -324,12 +364,12 @@ export default function Transactions() {
 
       </div>
 
-      {/* Add modal — portal so position:fixed is relative to viewport, not page */}
+      {/* Add/Edit modal — portal so position:fixed is relative to viewport, not page */}
       {showModal && createPortal(
-        <div className="modal-overlay" onClick={() => setShowModal(false)}>
+        <div className="modal-overlay" onClick={closeModal}>
           <div className="modal-panel" onClick={(e) => e.stopPropagation()}>
             <h3 style={{ fontFamily: 'Fraunces, serif', fontSize: '1.25rem', fontWeight: 300, color: 'var(--text-1)', letterSpacing: '-0.02em', marginBottom: 20 }}>
-              Nova Transação
+              {editingId ? 'Editar Transação' : 'Nova Transação'}
             </h3>
 
             {/* Type toggle */}
@@ -413,10 +453,10 @@ export default function Transactions() {
               )}
 
               <div style={{ display: 'flex', gap: 8, paddingTop: 4 }}>
-                <button className="btn-primary" style={{ flex: 1, justifyContent: 'center' }} onClick={handleAdd}>
-                  Salvar
+                <button className="btn-primary" style={{ flex: 1, justifyContent: 'center' }} onClick={handleSave}>
+                  {editingId ? 'Atualizar' : 'Salvar'}
                 </button>
-                <button className="btn-secondary" style={{ flex: 1, justifyContent: 'center' }} onClick={() => setShowModal(false)}>
+                <button className="btn-secondary" style={{ flex: 1, justifyContent: 'center' }} onClick={closeModal}>
                   Cancelar
                 </button>
               </div>
