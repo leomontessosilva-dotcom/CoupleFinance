@@ -3,7 +3,7 @@ import type { Transaction, FixedExpense, Investment, SavingsJar, UploadedDocumen
 import type { CreditCard } from '../types';
 import { txDB, fxDB, invDB, jarDB, docDB, creditCardDB, settingsDB, metricsDB } from '../lib/db';
 import type { MonthlyMetrics } from '../types';
-import { generateId, getSalaryForMonth, prevMonth } from '../utils/format';
+import { generateId, getSalaryForMonth, prevMonth, isInMonth } from '../utils/format';
 
 const salaryTxId = (person: 'Leonardo' | 'Serena', month: string) => `salary_${person}_${month}`;
 
@@ -188,13 +188,31 @@ export const useStore = create<AppState>()((set, get) => ({
     }
   },
 
-  // ─── Metrics (backend-first) ───────────────────────────────
+  // ─── Metrics ───────────────────────────────────────────────
+  // Tries the Supabase RPC first; falls back to local state so the
+  // Dashboard always shows correct numbers even if the migration hasn't
+  // been run yet or the RPC call races ahead of a pending DB insert.
   fetchMetrics: async (month) => {
-    const m = month ?? get().currentMonth;
+    const targetMonth = month ?? get().currentMonth;
     set({ metricsLoading: true });
-    const { data } = await metricsDB.getMonthly(m);
-    if (data) set({ monthlyMetrics: data, metricsLoading: false });
-    else set({ metricsLoading: false });
+    const { data } = await metricsDB.getMonthly(targetMonth);
+    if (data && (data.income > 0 || data.expenses > 0 || data.aportes > 0)) {
+      set({ monthlyMetrics: data, metricsLoading: false });
+      return;
+    }
+    // Fallback: calculate from local state (handles RPC missing or race condition)
+    const { transactions, fixedExpenses, savingsJars } = get();
+    const tx         = transactions.filter((t) => isInMonth(t.date, targetMonth));
+    const income     = tx.filter((t) => t.type === 'income' && !t.savingsJarId).reduce((s, t) => s + t.amount, 0);
+    const salaryIncome = tx.filter((t) => t.type === 'income' && t.category === 'Salário').reduce((s, t) => s + t.amount, 0);
+    const fixedTotal = fixedExpenses.filter((f) => f.active).reduce((s, f) => s + f.amount, 0);
+    const aportes    = tx.filter((t) => t.category === 'Aporte').reduce((s, t) => s + t.amount, 0);
+    const varExp     = tx.filter((t) => t.type === 'expense' && t.category !== 'Aporte').reduce((s, t) => s + t.amount, 0);
+    const jarTotal   = savingsJars.reduce((s, j) => s + j.currentValue, 0);
+    set({
+      monthlyMetrics: { income, salaryIncome, expenses: fixedTotal + varExp, fixed: fixedTotal, aportes, jarTotal },
+      metricsLoading: false,
+    });
   },
 
   // ─── UI ────────────────────────────────────────────────────
@@ -232,6 +250,8 @@ export const useStore = create<AppState>()((set, get) => ({
       set((s) => ({ transactions: [t, ...s.transactions] }));
       txDB.insert(t);
     }
+    // Refresh metrics immediately from local state (no RPC race condition)
+    get().fetchMetrics(month);
   },
 
   ensureSalaryTransactions: (month) => {
