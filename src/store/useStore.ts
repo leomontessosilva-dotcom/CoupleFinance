@@ -32,11 +32,13 @@ interface AppState {
   activePage: string;
   isLoading: boolean;
   dbError: string | null;
+  saveError: string | null;
   salaries: { Leonardo: number; Serena: number }; // kept for compat: current-month values
   salaryHistory: { Leonardo: Record<string, number>; Serena: Record<string, number> };
 
   // Init
   initData: () => Promise<void>;
+  clearSaveError: () => void;
 
   // UI actions
   setActivePage: (page: string) => void;
@@ -91,6 +93,7 @@ export const useStore = create<AppState>()((set, get) => ({
   activePage:    'dashboard',
   isLoading:     true,
   dbError:       null,
+  saveError:     null,
   salaries:      { Leonardo: 0, Serena: 0 },
   salaryHistory: { Leonardo: {}, Serena: {} },
 
@@ -177,6 +180,7 @@ export const useStore = create<AppState>()((set, get) => ({
   },
 
   // ─── UI ────────────────────────────────────────────────────
+  clearSaveError: () => set({ saveError: null }),
   setActivePage:   (page)  => set({ activePage: page }),
   setCurrentMonth: (month) => {
     set({ currentMonth: month });
@@ -227,29 +231,45 @@ export const useStore = create<AppState>()((set, get) => ({
   // ─── Transactions ──────────────────────────────────────────
   addTransaction: (t) => {
     set((s) => ({ transactions: [t, ...s.transactions] }));
-    txDB.insert(t);
+    txDB.insert(t).then((res: any) => {
+      if (res?.error) set((s) => ({ transactions: s.transactions.filter((x) => x.id !== t.id), saveError: `Erro ao salvar transação: ${res.error.message}` }));
+    });
   },
   updateTransaction: (t) => {
+    const prev = get().transactions.find((x) => x.id === t.id);
     set((s) => ({ transactions: s.transactions.map((x) => (x.id === t.id ? t : x)) }));
-    txDB.update(t);
+    txDB.update(t).then((res: any) => {
+      if (res?.error && prev) set((s) => ({ transactions: s.transactions.map((x) => (x.id === t.id ? prev : x)), saveError: `Erro ao atualizar transação: ${res.error.message}` }));
+    });
   },
   deleteTransaction: (id) => {
+    const prev = get().transactions.find((x) => x.id === id);
     set((s) => ({ transactions: s.transactions.filter((x) => x.id !== id) }));
-    txDB.delete(id);
+    txDB.delete(id).then((res: any) => {
+      if (res?.error && prev) set((s) => ({ transactions: [prev, ...s.transactions], saveError: `Erro ao excluir transação: ${res.error.message}` }));
+    });
   },
 
   // ─── Fixed Expenses ────────────────────────────────────────
   addFixedExpense: (f) => {
     set((s) => ({ fixedExpenses: [...s.fixedExpenses, f] }));
-    fxDB.insert(f);
+    fxDB.insert(f).then((res: any) => {
+      if (res?.error) set((s) => ({ fixedExpenses: s.fixedExpenses.filter((x) => x.id !== f.id), saveError: `Erro ao salvar gasto fixo: ${res.error.message}` }));
+    });
   },
   updateFixedExpense: (f) => {
+    const prev = get().fixedExpenses.find((x) => x.id === f.id);
     set((s) => ({ fixedExpenses: s.fixedExpenses.map((x) => (x.id === f.id ? f : x)) }));
-    fxDB.update(f);
+    fxDB.update(f).then((res: any) => {
+      if (res?.error && prev) set((s) => ({ fixedExpenses: s.fixedExpenses.map((x) => (x.id === f.id ? prev : x)), saveError: `Erro ao atualizar gasto fixo: ${res.error.message}` }));
+    });
   },
   deleteFixedExpense: (id) => {
+    const prev = get().fixedExpenses.find((x) => x.id === id);
     set((s) => ({ fixedExpenses: s.fixedExpenses.filter((x) => x.id !== id) }));
-    fxDB.delete(id);
+    fxDB.delete(id).then((res: any) => {
+      if (res?.error && prev) set((s) => ({ fixedExpenses: [...s.fixedExpenses, prev], saveError: `Erro ao excluir gasto fixo: ${res.error.message}` }));
+    });
   },
   toggleFixedExpense: (id) => {
     const updated = get().fixedExpenses.map((x) =>
@@ -257,27 +277,39 @@ export const useStore = create<AppState>()((set, get) => ({
     );
     set({ fixedExpenses: updated });
     const item = updated.find((x) => x.id === id);
-    if (item) fxDB.update(item);
+    if (item) fxDB.update(item).then((res: any) => {
+      if (res?.error) set({ saveError: `Erro ao atualizar gasto fixo: ${res.error.message}` });
+    });
   },
 
   // ─── Investments ───────────────────────────────────────────
   addInvestment: (i) => {
     set((s) => ({ investments: [...s.investments, i] }));
-    invDB.insert(i);
+    invDB.insert(i).then((res: any) => {
+      if (res?.error) set((s) => ({ investments: s.investments.filter((x) => x.id !== i.id), saveError: `Erro ao salvar investimento: ${res.error.message}` }));
+    });
   },
   deleteInvestment: (id) => {
+    const prev = get().investments.find((x) => x.id === id);
     set((s) => ({ investments: s.investments.filter((x) => x.id !== id) }));
-    invDB.delete(id);
+    invDB.delete(id).then((res: any) => {
+      if (res?.error && prev) set((s) => ({ investments: [...s.investments, prev], saveError: `Erro ao excluir investimento: ${res.error.message}` }));
+    });
   },
 
   // ─── Savings Jars ──────────────────────────────────────────
   addSavingsJar: (j) => {
     set((s) => ({ savingsJars: [...s.savingsJars, j] }));
-    jarDB.insert(j);
+    jarDB.insert(j).then((res: any) => {
+      if (res?.error) set((s) => ({ savingsJars: s.savingsJars.filter((x) => x.id !== j.id), saveError: `Erro ao salvar cofrinho: ${res.error.message}` }));
+    });
   },
   updateSavingsJar: (j) => {
+    const prev = get().savingsJars.find((x) => x.id === j.id);
     set((s) => ({ savingsJars: s.savingsJars.map((x) => (x.id === j.id ? j : x)) }));
-    jarDB.update(j);
+    jarDB.update(j).then((res: any) => {
+      if (res?.error && prev) set((s) => ({ savingsJars: s.savingsJars.map((x) => (x.id === j.id ? prev : x)), saveError: `Erro ao atualizar cofrinho: ${res.error.message}` }));
+    });
   },
   deleteSavingsJar: (id) => {
     const orphanTxIds = get().transactions.filter((t) => t.savingsJarId === id).map((t) => t.id);
@@ -285,7 +317,9 @@ export const useStore = create<AppState>()((set, get) => ({
       savingsJars:  s.savingsJars.filter((x) => x.id !== id),
       transactions: s.transactions.filter((t) => t.savingsJarId !== id),
     }));
-    jarDB.delete(id);
+    jarDB.delete(id).then((res: any) => {
+      if (res?.error) set({ saveError: `Erro ao excluir cofrinho: ${res.error.message}` });
+    });
     orphanTxIds.forEach((txId) => txDB.delete(txId));
   },
   addToJar: (id, amount) => {
@@ -294,7 +328,9 @@ export const useStore = create<AppState>()((set, get) => ({
     );
     set({ savingsJars: jars });
     const jar = jars.find((x) => x.id === id);
-    if (jar) jarDB.update(jar);
+    if (jar) jarDB.update(jar).then((res: any) => {
+      if (res?.error) set({ saveError: `Erro ao atualizar cofrinho: ${res.error.message}` });
+    });
   },
   // Like addToJar but also records a linked transaction for monthly tracking.
   // amount > 0 = deposit (money leaves the balance, category 'Aporte')
@@ -307,7 +343,9 @@ export const useStore = create<AppState>()((set, get) => ({
     );
     set({ savingsJars: jars });
     const updated = jars.find((x) => x.id === id);
-    if (updated) jarDB.update(updated);
+    if (updated) jarDB.update(updated).then((res: any) => {
+      if (res?.error) set({ saveError: `Erro ao atualizar cofrinho: ${res.error.message}` });
+    });
 
     const absAmt = Math.abs(amount);
     if (absAmt === 0) return;
@@ -323,27 +361,39 @@ export const useStore = create<AppState>()((set, get) => ({
       savingsJarId: id,
     };
     set((s) => ({ transactions: [t, ...s.transactions] }));
-    txDB.insert(t);
+    txDB.insert(t).then((res: any) => {
+      if (res?.error) set((s) => ({ transactions: s.transactions.filter((x) => x.id !== t.id), saveError: `Erro ao salvar transação do cofrinho: ${res.error.message}` }));
+    });
   },
 
   // ─── Documents ─────────────────────────────────────────────
   addDocument: (d) => {
     set((s) => ({ documents: [d, ...s.documents] }));
-    docDB.insert(d);
+    docDB.insert(d).then((res: any) => {
+      if (res?.error) set((s) => ({ documents: s.documents.filter((x) => x.id !== d.id), saveError: `Erro ao salvar documento: ${res.error.message}` }));
+    });
   },
   deleteDocument: (id) => {
+    const prev = get().documents.find((x) => x.id === id);
     set((s) => ({ documents: s.documents.filter((x) => x.id !== id) }));
-    docDB.delete(id);
+    docDB.delete(id).then((res: any) => {
+      if (res?.error && prev) set((s) => ({ documents: [prev, ...s.documents], saveError: `Erro ao excluir documento: ${res.error.message}` }));
+    });
   },
 
   // ─── Credit Cards ──────────────────────────────────────────
   addCreditCard: (c) => {
     set((s) => ({ creditCards: [...s.creditCards, c] }));
-    creditCardDB.insert(c);
+    creditCardDB.insert(c).then((res: any) => {
+      if (res?.error) set((s) => ({ creditCards: s.creditCards.filter((x) => x.id !== c.id), saveError: `Erro ao salvar cartão: ${res.error.message}` }));
+    });
   },
   updateCreditCard: (c) => {
+    const prev = get().creditCards.find((x) => x.id === c.id);
     set((s) => ({ creditCards: s.creditCards.map((x) => (x.id === c.id ? c : x)) }));
-    creditCardDB.update(c);
+    creditCardDB.update(c).then((res: any) => {
+      if (res?.error && prev) set((s) => ({ creditCards: s.creditCards.map((x) => (x.id === c.id ? prev : x)), saveError: `Erro ao atualizar cartão: ${res.error.message}` }));
+    });
   },
   deleteCreditCard: (id) => {
     // Unlink transactions from deleted card (keep the transaction, drop the cc link)
@@ -352,7 +402,9 @@ export const useStore = create<AppState>()((set, get) => ({
       creditCards:  s.creditCards.filter((x) => x.id !== id),
       transactions: s.transactions.map((t) => (t.creditCardId === id ? { ...t, creditCardId: undefined } : t)),
     }));
-    creditCardDB.delete(id);
+    creditCardDB.delete(id).then((res: any) => {
+      if (res?.error) set({ saveError: `Erro ao excluir cartão: ${res.error.message}` });
+    });
     linkedTx.forEach((t) => txDB.update({ ...t, creditCardId: undefined }));
   },
 }));

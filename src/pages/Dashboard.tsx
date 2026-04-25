@@ -89,9 +89,11 @@ export default function Dashboard() {
     const outflow      = expenses + aportes;           // total money out
     const balance      = income - outflow;
     const rate         = income > 0 ? (balance / income) * 100 : 0;
-    const invested     = investments.reduce((s, i) => s + i.currentValue, 0);
-    const jars         = savingsJars.reduce((s, j) => s + j.currentValue, 0);
-    const net          = invested + jars + balance;
+    const invested         = investments.reduce((s, i) => s + i.currentValue, 0);
+    const jars             = savingsJars.reduce((s, j) => s + j.currentValue, 0);
+    const patrimonioMes    = Math.max(0, balance);
+    const patrimonioInvest = invested + jars;
+    const net              = patrimonioMes + patrimonioInvest;
 
     // Health score: savings rate (40pt) + fixed ratio (30pt) + investment wealth (30pt)
     let score = 0;
@@ -108,7 +110,7 @@ export default function Dashboard() {
       .filter((t) => t.type === 'expense' && t.paymentMethod === 'credito')
       .reduce((s, t) => s + t.amount, 0);
 
-    return { income, salaryIncome, expenses, fixed, txExpenses, aportes, outflow, balance, rate, invested, jars, net, score: Math.min(100, score), ccSpending, perCardSpending };
+    return { income, salaryIncome, expenses, fixed, txExpenses, aportes, outflow, balance, rate, invested, jars, net, patrimonioMes, patrimonioInvest, score: Math.min(100, score), ccSpending, perCardSpending };
   }, [transactions, fixedExpenses, investments, savingsJars, currentMonth]);
 
   /* 6-month chart — salary is in transactions. Aportes separated so the
@@ -176,14 +178,42 @@ export default function Dashboard() {
 
         {/* Hero row */}
         <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', position: 'relative' }}>
-          <div>
+          <div style={{ flex: 1 }}>
             <p className="eyebrow" style={{ marginBottom: 10 }}>Patrimônio do Casal</p>
-            <p className="display-hero" style={{ marginBottom: 8 }}>
+            <p className="display-hero" style={{ marginBottom: 16 }}>
               {formatCurrency(m.net)}
             </p>
-            <p style={{ fontSize: 11.5, color: 'var(--text-3)', letterSpacing: '0.01em' }}>
-              Investimentos · Cofrinhos · Saldo disponível
-            </p>
+
+            {/* Patrimônio split */}
+            <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+              <div style={{
+                background: 'rgba(109,40,217,0.06)', borderRadius: 12,
+                padding: '12px 18px', minWidth: 180,
+                border: '1px solid rgba(109,40,217,0.12)',
+              }}>
+                <p style={{ fontSize: 10, fontWeight: 700, color: 'var(--accent)', letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 6 }}>
+                  Patrimônio do Mês
+                </p>
+                <p style={{ fontFamily: 'Fraunces, serif', fontSize: 20, fontWeight: 300, color: 'var(--text-1)', letterSpacing: '-0.02em', lineHeight: 1 }}>
+                  {formatCurrency(m.patrimonioMes)}
+                </p>
+                <p style={{ fontSize: 10, color: 'var(--text-3)', marginTop: 4 }}>Saldo em contas de débito</p>
+              </div>
+
+              <div style={{
+                background: 'rgba(4,120,87,0.06)', borderRadius: 12,
+                padding: '12px 18px', minWidth: 180,
+                border: '1px solid rgba(4,120,87,0.12)',
+              }}>
+                <p style={{ fontSize: 10, fontWeight: 700, color: 'var(--green)', letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 6 }}>
+                  Patrimônio de Investimento
+                </p>
+                <p style={{ fontFamily: 'Fraunces, serif', fontSize: 20, fontWeight: 300, color: 'var(--text-1)', letterSpacing: '-0.02em', lineHeight: 1 }}>
+                  {formatCurrency(m.patrimonioInvest)}
+                </p>
+                <p style={{ fontSize: 10, color: 'var(--text-3)', marginTop: 4 }}>Cofrinhos · Investimentos</p>
+              </div>
+            </div>
           </div>
 
           {/* Score ring */}
