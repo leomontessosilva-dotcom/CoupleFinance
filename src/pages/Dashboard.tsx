@@ -51,30 +51,30 @@ export default function Dashboard() {
   const { transactions, fixedExpenses, investments, savingsJars, currentMonth, creditCards, addCreditCard, updateCreditCard, monthlyMetrics, metricsLoading } = useStore();
   const [showCCModal, setShowCCModal] = useState(false);
   const [editingCard, setEditingCard] = useState<CreditCardType | null>(null);
-  const [ccForm, setCcForm] = useState({ name: '', limit: '', person: 'Casal', color: '#6D28D9' });
+  const [ccForm, setCcForm] = useState({ name: '', limit: '', currentBill: '', person: 'Casal', color: '#6D28D9' });
 
   const openAddCC = () => {
     setEditingCard(null);
-    setCcForm({ name: '', limit: '', person: 'Casal', color: '#6D28D9' });
+    setCcForm({ name: '', limit: '', currentBill: '', person: 'Casal', color: '#6D28D9' });
     setShowCCModal(true);
   };
 
   const openEditCC = (card: CreditCardType) => {
     setEditingCard(card);
-    setCcForm({ name: card.name, limit: String(card.limit), person: card.person, color: card.color });
+    setCcForm({ name: card.name, limit: String(card.limit), currentBill: String(card.currentBill), person: card.person, color: card.color });
     setShowCCModal(true);
   };
 
   const saveCC = () => {
     if (!ccForm.name) return;
     if (editingCard) {
-      updateCreditCard({ ...editingCard, name: ccForm.name, limit: Number(ccForm.limit) || 0, person: ccForm.person as Person, color: ccForm.color });
+      updateCreditCard({ ...editingCard, name: ccForm.name, limit: Number(ccForm.limit) || 0, currentBill: Number(ccForm.currentBill) || 0, person: ccForm.person as Person, color: ccForm.color });
     } else {
       addCreditCard({ id: generateId(), name: ccForm.name, limit: Number(ccForm.limit) || 0, person: ccForm.person as Person, color: ccForm.color, currentBill: 0 });
     }
     setShowCCModal(false);
     setEditingCard(null);
-    setCcForm({ name: '', limit: '', person: 'Casal', color: '#6D28D9' });
+    setCcForm({ name: '', limit: '', currentBill: '', person: 'Casal', color: '#6D28D9' });
   };
 
   /* All financial aggregates come from monthlyMetrics (Supabase RPC).
@@ -585,6 +585,16 @@ export default function Dashboard() {
                   </select>
                 </div>
               </div>
+              {editingCard && (
+                <div>
+                  <label className="f-label">Fatura Atual (R$)</label>
+                  <input type="number" className="input" placeholder="0,00" value={ccForm.currentBill}
+                    onChange={e => setCcForm({ ...ccForm, currentBill: e.target.value })} />
+                  <p style={{ fontSize: 10, color: 'var(--text-3)', marginTop: 4 }}>
+                    Valor total da fatura atual. Atualizado automaticamente ao lançar gastos.
+                  </p>
+                </div>
+              )}
               <div>
                 <label className="f-label">Cor</label>
                 <div style={{ display: 'flex', gap: 8 }}>
