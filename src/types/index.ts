@@ -55,7 +55,7 @@ export interface Investment {
   monthlyContribution?: number;
 }
 
-export type YieldPeriod = 'diário' | 'mensal' | 'anual';
+export type YieldPeriod = 'diário' | 'mensal' | 'anual' | 'cdi';
 
 export interface SavingsJar {
   id: string;

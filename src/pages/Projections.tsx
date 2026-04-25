@@ -9,7 +9,15 @@ import type { SavingsJar, Transaction } from '../types';
 
 /* ── Helpers ──────────────────────────────────────────────── */
 
+// CDI aproximado de abril 2026 (Selic - 0,10 p.p.)
+const CDI_ANUAL = 14.65;
+
 function toMonthlyRate(rate: number, period: string): number {
+  if (period === 'cdi') {
+    // rate = X% do CDI → taxa efetiva anual = (X/100) × CDI
+    const anual = (rate / 100) * (CDI_ANUAL / 100);
+    return Math.pow(1 + anual, 1 / 12) - 1;
+  }
   const r = rate / 100;
   if (period === 'diário')  return Math.pow(1 + r, 30) - 1;
   if (period === 'anual')   return Math.pow(1 + r, 1 / 12) - 1;
@@ -43,11 +51,14 @@ function lastNMonths(currentMonth: string, n: number): string[] {
   return months;
 }
 
-/** Actual contributions for a jar in a given month (YYYY-MM) */
+/** Actual contributions for a jar in a given month (YYYY-MM).
+ *  Depósito = type 'expense' → POSITIVO (dinheiro entrou no cofrinho)
+ *  Retirada = type 'income'  → NEGATIVO (dinheiro saiu do cofrinho)
+ */
 function actualForMonth(jar: SavingsJar, txs: Transaction[], ym: string): number {
   return txs
     .filter((t) => t.savingsJarId === jar.id && t.date.startsWith(ym))
-    .reduce((sum, t) => sum + (t.type === 'income' ? t.amount : -t.amount), 0);
+    .reduce((sum, t) => sum + (t.type === 'expense' ? t.amount : -t.amount), 0);
 }
 
 /* ── Custom Tooltip ───────────────────────────────────────── */
@@ -305,9 +316,14 @@ export default function Projections() {
                     </td>
                     <td>
                       {monthlyRate > 0 ? (
-                        <span className="pill pill-green" style={{ fontSize: 11 }}>
-                          {monthlyRate.toFixed(3)}%/mês
-                        </span>
+                        <div>
+                          <span className="pill pill-green" style={{ fontSize: 11 }}>
+                            {monthlyRate.toFixed(3)}%/mês
+                          </span>
+                          <p style={{ fontSize: 10, color: 'var(--text-3)', marginTop: 3 }}>
+                            {((Math.pow(1 + monthlyRate/100, 12) - 1) * 100).toFixed(2)}% a.a. ef.
+                          </p>
+                        </div>
                       ) : (
                         <span style={{ fontSize: 11, color: 'var(--text-3)' }}>—</span>
                       )}

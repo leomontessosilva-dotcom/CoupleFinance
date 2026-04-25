@@ -8,6 +8,41 @@ import type { SavingsJar, YieldPeriod } from '../types';
 const EMOJIS = ['✈️', '🛡️', '🏡', '🚗', '💍', '🎓', '💻', '📱', '🎉', '🌊', '🐾', '🏥', '🎸', '🍕', '🌍'];
 const COLORS = ['#7c3aed', '#ec4899', '#10b981', '#f59e0b', '#3b82f6', '#ef4444', '#8b5cf6', '#14b8a6', '#f472b6', '#6366f1'];
 
+// CDI aproximado de abril 2026 (Selic - 0,10 p.p.)
+const CDI_ANUAL = 14.65;
+
+function toMonthlyRate(rate: number, period: string): number {
+  if (period === 'cdi') {
+    // rate = X% do CDI → taxa efetiva anual = (X/100) × CDI
+    const anual = (rate / 100) * (CDI_ANUAL / 100);
+    return Math.pow(1 + anual, 1 / 12) - 1;
+  }
+  const r = rate / 100;
+  if (period === 'diário') return Math.pow(1 + r, 30) - 1;
+  if (period === 'anual')  return Math.pow(1 + r, 1 / 12) - 1;
+  return r; // mensal
+}
+
+function monthsToTarget(pv: number, target: number, pmt: number, monthlyRate: number): number | null {
+  if (pv >= target) return 0;
+  for (let m = 1; m <= 600; m++) {
+    const fv = monthlyRate > 0
+      ? pv * Math.pow(1 + monthlyRate, m) + pmt * (Math.pow(1 + monthlyRate, m) - 1) / monthlyRate
+      : pv + pmt * m;
+    if (fv >= target) return m;
+  }
+  return null;
+}
+
+function yieldLabel(rate: number, period: string): string {
+  const r = toMonthlyRate(rate, period);
+  const anualEfetivo = (Math.pow(1 + r, 12) - 1) * 100;
+  if (period === 'cdi') return `${rate}% do CDI · ${anualEfetivo.toFixed(2)}% a.a. efetivo`;
+  if (period === 'anual') return `${rate}% a.a. · ${(r * 100).toFixed(3)}% a.m.`;
+  if (period === 'mensal') return `${rate}% a.m. · ${anualEfetivo.toFixed(2)}% a.a.`;
+  return `${rate}% a.d.`;
+}
+
 const emptyForm = (): Partial<SavingsJar> => ({
   name: '', emoji: '🎯', targetValue: 0, currentValue: 0, color: '#7c3aed',
   monthlyContribution: 0, description: '', yieldRate: undefined, yieldPeriod: 'mensal',
@@ -19,22 +54,31 @@ function JarCard({ jar, onEdit }: { jar: SavingsJar; onEdit: (jar: SavingsJar) =
   const [amount, setAmount] = useState('');
   const [isAdding, setIsAdding] = useState(true);
 
-  const pct = Math.min(100, (jar.currentValue / jar.targetValue) * 100);
+  const pct = Math.min(100, jar.targetValue > 0 ? (jar.currentValue / jar.targetValue) * 100 : 0);
   const remaining = jar.targetValue - jar.currentValue;
-  const monthsLeft = jar.monthlyContribution > 0 ? Math.ceil(remaining / jar.monthlyContribution) : null;
+
+  // Yield-aware months to target
+  const monthlyRate = jar.yieldRate && jar.yieldRate > 0
+    ? toMonthlyRate(jar.yieldRate, jar.yieldPeriod ?? 'mensal')
+    : 0;
+  const monthsLeft = jar.monthlyContribution > 0 || monthlyRate > 0
+    ? monthsToTarget(jar.currentValue, jar.targetValue, jar.monthlyContribution, monthlyRate)
+    : null;
 
   const today = new Date();
   let completionDate = '';
-  if (monthsLeft !== null) {
+  if (monthsLeft !== null && monthsLeft > 0) {
     const d = new Date(today.getFullYear(), today.getMonth() + monthsLeft, 1);
     completionDate = d.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
   }
 
-  // Actual contributions this month from linked transactions
+  // Aportes reais este mês via transações vinculadas.
+  // Depósito no cofrinho → transaction type='expense' (dinheiro sai do saldo, entra no cofrinho) → POSITIVO
+  // Retirada do cofrinho → transaction type='income' (dinheiro volta ao saldo) → NEGATIVO
   const actualThisMonth = useMemo(() => {
     return transactions
       .filter((t) => t.savingsJarId === jar.id && t.date.startsWith(currentMonth))
-      .reduce((sum, t) => sum + (t.type === 'income' ? t.amount : -t.amount), 0);
+      .reduce((sum, t) => sum + (t.type === 'expense' ? t.amount : -t.amount), 0);
   }, [transactions, jar.id, currentMonth]);
 
   const hasMonthlyGoal = jar.monthlyContribution > 0;
@@ -104,14 +148,14 @@ function JarCard({ jar, onEdit }: { jar: SavingsJar; onEdit: (jar: SavingsJar) =
         <div className="rounded-xl bg-gray-50 p-3">
           <p className="text-[10px] text-gray-400 uppercase tracking-wide mb-0.5">Conclusão Est.</p>
           <p className="text-xs font-semibold text-gray-700 leading-tight">
-            {pct >= 100 ? '✅ Alcançado!' : completionDate || 'Sem aporte'}
+            {pct >= 100 ? '✅ Alcançado!' : completionDate || (monthsLeft === null ? 'Sem aporte' : 'em breve')}
           </p>
         </div>
         {jar.yieldRate != null && jar.yieldRate > 0 && (
           <div className="col-span-2 rounded-xl p-3" style={{ background: `${jar.color}12`, border: `1px solid ${jar.color}30` }}>
             <p className="text-[10px] uppercase tracking-wide mb-0.5" style={{ color: jar.color }}>Rendimento</p>
             <p className="text-sm font-semibold" style={{ color: jar.color }}>
-              {jar.yieldRate}% {jar.yieldPeriod}
+              {yieldLabel(jar.yieldRate, jar.yieldPeriod ?? 'mensal')}
             </p>
           </div>
         )}
@@ -421,20 +465,36 @@ export default function Cofrinhos() {
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="form-label">Rendimento (%)</label>
-                  <input type="number" step="0.01" className="input-field" placeholder="Ex: 0.8" value={form.yieldRate || ''}
+                  <label className="form-label">
+                    {form.yieldPeriod === 'cdi' ? 'Percentual do CDI (ex: 120)' : 'Taxa de Rendimento (%)'}
+                  </label>
+                  <input type="number" step="0.01" className="input-field"
+                    placeholder={form.yieldPeriod === 'cdi' ? 'Ex: 120' : 'Ex: 13'}
+                    value={form.yieldRate || ''}
                     onChange={(e) => setForm({ ...form, yieldRate: parseFloat(e.target.value) || undefined })} />
                 </div>
                 <div>
-                  <label className="form-label">Período</label>
-                  <select className="input-field" value={form.yieldPeriod || 'mensal'}
+                  <label className="form-label">Tipo</label>
+                  <select className="input-field" value={form.yieldPeriod || 'anual'}
                     onChange={(e) => setForm({ ...form, yieldPeriod: e.target.value as YieldPeriod })}>
-                    <option value="diário">Diário</option>
-                    <option value="mensal">Mensal</option>
-                    <option value="anual">Anual</option>
+                    <option value="anual">% ao ano</option>
+                    <option value="mensal">% ao mês</option>
+                    <option value="cdi">% do CDI</option>
+                    <option value="diário">% ao dia</option>
                   </select>
                 </div>
               </div>
+              {form.yieldRate && form.yieldRate > 0 && (() => {
+                const r = toMonthlyRate(form.yieldRate, form.yieldPeriod ?? 'anual');
+                const anual = (Math.pow(1 + r, 12) - 1) * 100;
+                return (
+                  <p className="text-[11px] text-purple-600 bg-purple-50 rounded-lg px-3 py-2">
+                    {form.yieldPeriod === 'cdi'
+                      ? `${form.yieldRate}% do CDI (CDI=${CDI_ANUAL}% a.a.) = ${anual.toFixed(2)}% a.a. efetivo · ${(r*100).toFixed(3)}% a.m.`
+                      : `Taxa efetiva: ${anual.toFixed(2)}% a.a. · ${(r*100).toFixed(3)}% a.m.`}
+                  </p>
+                );
+              })()}
 
               <div>
                 <label className="form-label">Descrição (opcional)</label>
