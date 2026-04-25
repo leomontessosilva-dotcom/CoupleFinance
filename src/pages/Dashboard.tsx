@@ -43,8 +43,12 @@ const ChartTooltip = ({ active, payload, label }: any) => {
 };
 
 /* ── Main Dashboard ──────────────────────────────────────── */
+const Skel = ({ w = 80 }: { w?: number }) => (
+  <span style={{ display: 'inline-block', width: w, height: 16, borderRadius: 6, background: 'var(--border)', verticalAlign: 'middle', animation: 'pulse 1.4s ease-in-out infinite' }} />
+);
+
 export default function Dashboard() {
-  const { transactions, fixedExpenses, investments, savingsJars, currentMonth, creditCards, addCreditCard, updateCreditCard } = useStore();
+  const { transactions, fixedExpenses, investments, savingsJars, currentMonth, creditCards, addCreditCard, updateCreditCard, monthlyMetrics, metricsLoading } = useStore();
   const [showCCModal, setShowCCModal] = useState(false);
   const [editingCard, setEditingCard] = useState<CreditCardType | null>(null);
   const [ccForm, setCcForm] = useState({ name: '', limit: '', person: 'Casal', color: '#6D28D9' });
@@ -66,33 +70,29 @@ export default function Dashboard() {
     if (editingCard) {
       updateCreditCard({ ...editingCard, name: ccForm.name, limit: Number(ccForm.limit) || 0, person: ccForm.person as Person, color: ccForm.color });
     } else {
-      addCreditCard({ id: generateId(), name: ccForm.name, limit: Number(ccForm.limit) || 0, person: ccForm.person as Person, color: ccForm.color });
+      addCreditCard({ id: generateId(), name: ccForm.name, limit: Number(ccForm.limit) || 0, person: ccForm.person as Person, color: ccForm.color, currentBill: 0 });
     }
     setShowCCModal(false);
     setEditingCard(null);
     setCcForm({ name: '', limit: '', person: 'Casal', color: '#6D28D9' });
   };
 
-  /* Month-level aggregates
-     Salary is now a regular transaction (id = salary_{person}_{month}), so
-     it's already included in txIncome — no separate salaryIncome sum.
-     Aportes (category 'Aporte') are expenses for cash-flow purposes but are
-     tracked separately from 'real' spending. */
+  /* All financial aggregates come from monthlyMetrics (Supabase RPC).
+     Only chart-local and patrimônio totals are derived here. */
   const m = useMemo(() => {
-    const tx           = transactions.filter((t) => isInMonth(t.date, currentMonth));
-    const salaryIncome = tx.filter((t) => t.type === 'income' && t.category === 'Salário').reduce((s, t) => s + t.amount, 0);
-    const income       = tx.filter((t) => t.type === 'income').reduce((s, t) => s + t.amount, 0);
-    const fixed        = fixedExpenses.filter((f) => f.active).reduce((s, f) => s + f.amount, 0);
-    const aportes      = tx.filter((t) => t.type === 'expense' && t.category === 'Aporte').reduce((s, t) => s + t.amount, 0);
-    const txExpenses   = tx.filter((t) => t.type === 'expense' && t.category !== 'Aporte').reduce((s, t) => s + t.amount, 0);
-    const expenses     = fixed + txExpenses;           // real spending
-    const outflow      = expenses + aportes;           // total money out
-    const balance      = income - outflow;
-    const rate         = income > 0 ? (balance / income) * 100 : 0;
+    const mm      = monthlyMetrics;
+    const income  = mm?.income       ?? 0;
+    const expenses = mm?.expenses    ?? 0;
+    const aportes  = mm?.aportes     ?? 0;
+    const fixed    = mm?.fixed       ?? 0;
+    const salaryIncome = mm?.salaryIncome ?? 0;
+    const balance  = income - expenses - aportes;
+    const rate     = income > 0 ? (balance / income) * 100 : 0;
+
     const invested         = investments.reduce((s, i) => s + i.currentValue, 0);
-    const jars             = savingsJars.reduce((s, j) => s + j.currentValue, 0);
+    const jarTotal         = mm?.jarTotal ?? savingsJars.reduce((s, j) => s + j.currentValue, 0);
     const patrimonioMes    = Math.max(0, balance);
-    const patrimonioInvest = invested + jars;
+    const patrimonioInvest = invested + jarTotal;
     const net              = patrimonioMes + patrimonioInvest;
 
     // Health score: savings rate (40pt) + fixed ratio (30pt) + investment wealth (30pt)
@@ -101,17 +101,8 @@ export default function Dashboard() {
     if (income > 0) { const fr = fixed / income; if (fr < 0.3) score += 30; else if (fr < 0.4) score += 22; else if (fr < 0.5) score += 15; else if (fr < 0.7) score += 7; }
     if (income > 0) { if (invested > income * 6) score += 30; else if (invested > income * 3) score += 22; else if (invested > income) score += 15; else if (invested > 0) score += 7; }
 
-    // Per-card spending from linked creditCardId
-    const perCardSpending: Record<string, number> = {};
-    tx.filter((t) => t.type === 'expense' && t.creditCardId).forEach((t) => {
-      perCardSpending[t.creditCardId!] = (perCardSpending[t.creditCardId!] || 0) + t.amount;
-    });
-    const ccSpending = tx
-      .filter((t) => t.type === 'expense' && t.paymentMethod === 'credito')
-      .reduce((s, t) => s + t.amount, 0);
-
-    return { income, salaryIncome, expenses, fixed, txExpenses, aportes, outflow, balance, rate, invested, jars, net, patrimonioMes, patrimonioInvest, score: Math.min(100, score), ccSpending, perCardSpending };
-  }, [transactions, fixedExpenses, investments, savingsJars, currentMonth]);
+    return { income, salaryIncome, expenses, fixed, aportes, balance, rate, invested, net, patrimonioMes, patrimonioInvest, jarTotal, score: Math.min(100, score) };
+  }, [monthlyMetrics, investments, savingsJars]);
 
   /* 6-month chart — salary is in transactions. Aportes separated so the
      'Despesas' line reflects real spending only. */
@@ -181,7 +172,7 @@ export default function Dashboard() {
           <div style={{ flex: 1 }}>
             <p className="eyebrow" style={{ marginBottom: 10 }}>Patrimônio do Casal</p>
             <p className="display-hero" style={{ marginBottom: 16 }}>
-              {formatCurrency(m.net)}
+              {metricsLoading ? <Skel w={160} /> : formatCurrency(m.net)}
             </p>
 
             {/* Patrimônio split */}
@@ -195,7 +186,7 @@ export default function Dashboard() {
                   Patrimônio do Mês
                 </p>
                 <p style={{ fontFamily: 'Fraunces, serif', fontSize: 20, fontWeight: 300, color: 'var(--text-1)', letterSpacing: '-0.02em', lineHeight: 1 }}>
-                  {formatCurrency(m.patrimonioMes)}
+                  {metricsLoading ? <Skel w={90} /> : formatCurrency(m.patrimonioMes)}
                 </p>
                 <p style={{ fontSize: 10, color: 'var(--text-3)', marginTop: 4 }}>Saldo em contas de débito</p>
               </div>
@@ -209,7 +200,7 @@ export default function Dashboard() {
                   Patrimônio de Investimento
                 </p>
                 <p style={{ fontFamily: 'Fraunces, serif', fontSize: 20, fontWeight: 300, color: 'var(--text-1)', letterSpacing: '-0.02em', lineHeight: 1 }}>
-                  {formatCurrency(m.patrimonioInvest)}
+                  {metricsLoading ? <Skel w={90} /> : formatCurrency(m.patrimonioInvest)}
                 </p>
                 <p style={{ fontSize: 10, color: 'var(--text-3)', marginTop: 4 }}>Cofrinhos · Investimentos</p>
               </div>
@@ -245,24 +236,23 @@ export default function Dashboard() {
 
         {/* Stat chips row */}
         <div className="stat-chips-row" style={{ display: 'flex', marginTop: 28, borderTop: '1px solid var(--border)', position: 'relative' }}>
-          {[
-            { label: 'Receitas do Mês',  value: formatCurrency(m.income),   sub: m.salaryIncome > 0 ? `Salário: ${formatCurrency(m.salaryIncome)}` : undefined, indicator: 'up',   color: 'var(--green)' },
-            { label: 'Despesas do Mês',  value: formatCurrency(m.expenses),  sub: m.fixed > 0 ? `Fixos: ${formatCurrency(m.fixed)}` : undefined, indicator: 'down', color: 'var(--red)' },
-            { label: 'Aportes do Mês',   value: formatCurrency(m.aportes),   sub: 'p/ cofrinhos', indicator: null, color: '#059669' },
-            { label: 'Saldo',            value: formatCurrency(m.balance),   sub: undefined, indicator: m.balance >= 0 ? 'up' : 'down', color: m.balance >= 0 ? 'var(--green)' : 'var(--red)' },
-            { label: 'Taxa de Poupança', value: `${m.rate.toFixed(1)}%`,     sub: undefined, indicator: m.rate >= 20 ? 'up' : 'down', color: m.rate >= 20 ? 'var(--green)' : m.rate >= 10 ? 'var(--amber)' : 'var(--red)' },
-            { label: 'Total Investido',  value: formatCurrency(m.invested),  sub: undefined, indicator: 'up', color: 'var(--accent)' },
-          ].map((s, i) => (
+          {([
+            { label: 'Receitas do Mês', value: formatCurrency(m.income),   sub: m.salaryIncome > 0 ? `Salário: ${formatCurrency(m.salaryIncome)}` : undefined, indicator: 'up',   color: 'var(--green)' },
+            { label: 'Despesas do Mês', value: formatCurrency(m.expenses),  sub: m.fixed > 0 ? `Fixos: ${formatCurrency(m.fixed)}` : undefined, indicator: 'down', color: 'var(--red)' },
+            { label: 'Aportes do Mês',  value: formatCurrency(m.aportes),   sub: 'p/ cofrinhos', indicator: null, color: '#059669' },
+            { label: 'Saldo',           value: formatCurrency(m.balance),   sub: undefined, indicator: m.balance >= 0 ? 'up' : 'down', color: m.balance >= 0 ? 'var(--green)' : 'var(--red)' },
+          ] as { label: string; value: string; sub?: string; indicator: string | null; color: string }[]).map((s, i) => (
             <div key={i} className="stat-chip" style={{ flex: 1 }}>
               <p className="eyebrow" style={{ marginBottom: 5 }}>{s.label}</p>
               <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                <span className="display-num" style={{ fontSize: 17, fontWeight: 400, color: s.color }}>
-                  {s.value}
-                </span>
-                {s.indicator === 'up' && <ArrowUpRight size={13} color="var(--green)" />}
-                {s.indicator === 'down' && <ArrowDownRight size={13} color="var(--red)" />}
+                {metricsLoading
+                  ? <Skel w={72} />
+                  : <span className="display-num" style={{ fontSize: 17, fontWeight: 400, color: s.color }}>{s.value}</span>
+                }
+                {!metricsLoading && s.indicator === 'up' && <ArrowUpRight size={13} color="var(--green)" />}
+                {!metricsLoading && s.indicator === 'down' && <ArrowDownRight size={13} color="var(--red)" />}
               </div>
-              {s.sub && (
+              {s.sub && !metricsLoading && (
                 <p style={{ fontSize: 10, color: 'var(--text-3)', marginTop: 2 }}>{s.sub}</p>
               )}
             </div>
@@ -392,9 +382,9 @@ export default function Dashboard() {
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
                 {creditCards.map((card) => {
-                  const spending = m.perCardSpending[card.id] || 0;
-                  const pct = card.limit > 0 ? Math.min(100, (spending / card.limit) * 100) : 0;
-                  const isOver = card.limit > 0 && spending > card.limit;
+                  const bill   = card.currentBill;
+                  const pct    = card.limit > 0 ? Math.min(100, (bill / card.limit) * 100) : 0;
+                  const isOver = card.limit > 0 && bill > card.limit;
                   const barColor = isOver ? 'var(--red)' : pct > 80 ? 'var(--amber)' : card.color;
                   return (
                     <div key={card.id}>
@@ -409,7 +399,7 @@ export default function Dashboard() {
                         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                           <div style={{ textAlign: 'right' }}>
                             <span style={{ fontFamily: 'Fraunces, serif', fontSize: 13, color: isOver ? 'var(--red)' : 'var(--text-1)' }}>
-                              {formatCurrency(spending)}
+                              {formatCurrency(bill)}
                             </span>
                             {card.limit > 0 && (
                               <p style={{ fontSize: 9.5, color: 'var(--text-3)', marginTop: 1 }}>/ {formatCurrency(card.limit)}</p>

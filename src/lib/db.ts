@@ -6,7 +6,7 @@
 import { supabase } from './supabase';
 import type {
   Transaction, FixedExpense, Investment,
-  SavingsJar, UploadedDocument, CreditCard, YieldPeriod,
+  SavingsJar, UploadedDocument, CreditCard, YieldPeriod, MonthlyMetrics,
 } from '../types';
 
 // ── Mappers ──────────────────────────────────────────────────
@@ -102,9 +102,11 @@ const docFromDb = (r: any): UploadedDocument => ({
 
 const ccToDb = (c: CreditCard) => ({
   id: c.id, name: c.name, card_limit: c.limit, person: c.person, color: c.color,
+  current_bill: c.currentBill,
 });
 const ccFromDb = (r: any): CreditCard => ({
   id: r.id, name: r.name, limit: Number(r.card_limit), person: r.person, color: r.color,
+  currentBill: Number(r.current_bill ?? 0),
 });
 
 // ── Transactions ──────────────────────────────────────────────
@@ -205,4 +207,26 @@ export const creditCardDB = {
   insert: (c: CreditCard) => supabase.from('credit_cards').insert(ccToDb(c)),
   update: (c: CreditCard) => supabase.from('credit_cards').update(ccToDb(c)).eq('id', c.id),
   delete: (id: string) => supabase.from('credit_cards').delete().eq('id', id),
+  adjustBill: (id: string, delta: number) =>
+    supabase.rpc('adjust_card_bill', { p_id: id, p_delta: delta }),
+};
+
+// ── Monthly Metrics ───────────────────────────────────────────
+
+export const metricsDB = {
+  getMonthly: async (month: string): Promise<{ data: MonthlyMetrics | null; error: any }> => {
+    const { data, error } = await supabase.rpc('get_monthly_metrics', { p_month: month });
+    if (error || !data) return { data: null, error };
+    return {
+      data: {
+        income:       Number(data.income       ?? 0),
+        salaryIncome: Number(data.salary_income ?? 0),
+        expenses:     Number(data.expenses     ?? 0),
+        fixed:        Number(data.fixed        ?? 0),
+        aportes:      Number(data.aportes      ?? 0),
+        jarTotal:     Number(data.jar_total    ?? 0),
+      },
+      error: null,
+    };
+  },
 };

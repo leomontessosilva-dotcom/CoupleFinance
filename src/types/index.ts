@@ -76,6 +76,16 @@ export interface CreditCard {
   limit: number;
   person: Person;
   color: string;      // hex color
+  currentBill: number; // running fatura total, updated atomically via adjust_card_bill RPC
+}
+
+export interface MonthlyMetrics {
+  income: number;
+  salaryIncome: number;
+  expenses: number;
+  fixed: number;
+  aportes: number;
+  jarTotal: number;
 }
 
 export type DocumentType = 'Holerite' | 'Nota Fiscal' | 'Comprovante' | 'Contrato' | 'Outro';

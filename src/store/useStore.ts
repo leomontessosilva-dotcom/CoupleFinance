@@ -1,7 +1,8 @@
 import { create } from 'zustand';
 import type { Transaction, FixedExpense, Investment, SavingsJar, UploadedDocument } from '../types';
 import type { CreditCard } from '../types';
-import { txDB, fxDB, invDB, jarDB, docDB, creditCardDB, settingsDB } from '../lib/db';
+import { txDB, fxDB, invDB, jarDB, docDB, creditCardDB, settingsDB, metricsDB } from '../lib/db';
+import type { MonthlyMetrics } from '../types';
 import { generateId, getSalaryForMonth, prevMonth } from '../utils/format';
 
 const salaryTxId = (person: 'Leonardo' | 'Serena', month: string) => `salary_${person}_${month}`;
@@ -31,13 +32,16 @@ interface AppState {
   currentMonth: string;
   activePage: string;
   isLoading: boolean;
+  metricsLoading: boolean;
   dbError: string | null;
   saveError: string | null;
   salaries: { Leonardo: number; Serena: number }; // kept for compat: current-month values
   salaryHistory: { Leonardo: Record<string, number>; Serena: Record<string, number> };
+  monthlyMetrics: MonthlyMetrics | null;
 
   // Init
   initData: () => Promise<void>;
+  fetchMetrics: (month?: string) => Promise<void>;
   clearSaveError: () => void;
 
   // UI actions
@@ -83,19 +87,21 @@ interface AppState {
 }
 
 export const useStore = create<AppState>()((set, get) => ({
-  transactions:  [],
-  fixedExpenses: [],
-  investments:   [],
-  savingsJars:   [],
-  documents:     [],
-  creditCards:   [],
-  currentMonth:  '2026-04',
-  activePage:    'dashboard',
-  isLoading:     true,
-  dbError:       null,
-  saveError:     null,
-  salaries:      { Leonardo: 0, Serena: 0 },
-  salaryHistory: { Leonardo: {}, Serena: {} },
+  transactions:   [],
+  fixedExpenses:  [],
+  investments:    [],
+  savingsJars:    [],
+  documents:      [],
+  creditCards:    [],
+  currentMonth:   '2026-04',
+  activePage:     'dashboard',
+  isLoading:      true,
+  metricsLoading: true,
+  dbError:        null,
+  saveError:      null,
+  salaries:       { Leonardo: 0, Serena: 0 },
+  salaryHistory:  { Leonardo: {}, Serena: {} },
+  monthlyMetrics: null,
 
   // ─── Init: load from Supabase ──────────────────────────────
   initData: async () => {
@@ -174,9 +180,21 @@ export const useStore = create<AppState>()((set, get) => ({
         get().ensureSalaryTransactions(m);
         m = prevMonth(m);
       }
+
+      // Load backend-computed metrics (non-blocking — metricsLoading handles the UI)
+      get().fetchMetrics();
     } catch (e: any) {
       set({ isLoading: false, dbError: String(e?.message ?? e) });
     }
+  },
+
+  // ─── Metrics (backend-first) ───────────────────────────────
+  fetchMetrics: async (month) => {
+    const m = month ?? get().currentMonth;
+    set({ metricsLoading: true });
+    const { data } = await metricsDB.getMonthly(m);
+    if (data) set({ monthlyMetrics: data, metricsLoading: false });
+    else set({ metricsLoading: false });
   },
 
   // ─── UI ────────────────────────────────────────────────────
@@ -185,6 +203,7 @@ export const useStore = create<AppState>()((set, get) => ({
   setCurrentMonth: (month) => {
     set({ currentMonth: month });
     get().ensureSalaryTransactions(month);
+    get().fetchMetrics(month);
   },
   setSalary: (person, value) => {
     set((s) => ({ salaries: { ...s.salaries, [person]: value } }));
@@ -231,22 +250,91 @@ export const useStore = create<AppState>()((set, get) => ({
   // ─── Transactions ──────────────────────────────────────────
   addTransaction: (t) => {
     set((s) => ({ transactions: [t, ...s.transactions] }));
+    // Optimistic card bill update
+    if (t.creditCardId && t.type === 'expense') {
+      set((s) => ({
+        creditCards: s.creditCards.map((c) =>
+          c.id === t.creditCardId ? { ...c, currentBill: c.currentBill + t.amount } : c
+        ),
+      }));
+    }
     txDB.insert(t).then((res: any) => {
-      if (res?.error) set((s) => ({ transactions: s.transactions.filter((x) => x.id !== t.id), saveError: `Erro ao salvar transação: ${res.error.message}` }));
+      if (res?.error) {
+        set((s) => ({ transactions: s.transactions.filter((x) => x.id !== t.id), saveError: `Erro ao salvar transação: ${res.error.message}` }));
+        if (t.creditCardId && t.type === 'expense') {
+          set((s) => ({
+            creditCards: s.creditCards.map((c) =>
+              c.id === t.creditCardId ? { ...c, currentBill: Math.max(0, c.currentBill - t.amount) } : c
+            ),
+          }));
+        }
+      } else {
+        if (t.creditCardId && t.type === 'expense') creditCardDB.adjustBill(t.creditCardId, t.amount);
+        get().fetchMetrics();
+      }
     });
   },
   updateTransaction: (t) => {
     const prev = get().transactions.find((x) => x.id === t.id);
     set((s) => ({ transactions: s.transactions.map((x) => (x.id === t.id ? t : x)) }));
+    // Optimistic card bill delta
+    if (prev?.creditCardId && prev.type === 'expense' && t.creditCardId === prev.creditCardId) {
+      const delta = t.amount - prev.amount;
+      if (delta !== 0) {
+        set((s) => ({
+          creditCards: s.creditCards.map((c) =>
+            c.id === t.creditCardId ? { ...c, currentBill: Math.max(0, c.currentBill + delta) } : c
+          ),
+        }));
+      }
+    }
     txDB.update(t).then((res: any) => {
-      if (res?.error && prev) set((s) => ({ transactions: s.transactions.map((x) => (x.id === t.id ? prev : x)), saveError: `Erro ao atualizar transação: ${res.error.message}` }));
+      if (res?.error && prev) {
+        set((s) => ({ transactions: s.transactions.map((x) => (x.id === t.id ? prev : x)), saveError: `Erro ao atualizar transação: ${res.error.message}` }));
+        if (prev.creditCardId && prev.type === 'expense') {
+          const delta = t.amount - prev.amount;
+          if (delta !== 0) {
+            set((s) => ({
+              creditCards: s.creditCards.map((c) =>
+                c.id === prev.creditCardId ? { ...c, currentBill: Math.max(0, c.currentBill - delta) } : c
+              ),
+            }));
+          }
+        }
+      } else {
+        if (prev?.creditCardId && prev.type === 'expense') {
+          const delta = t.amount - prev.amount;
+          if (delta !== 0) creditCardDB.adjustBill(prev.creditCardId, delta);
+        }
+        get().fetchMetrics();
+      }
     });
   },
   deleteTransaction: (id) => {
     const prev = get().transactions.find((x) => x.id === id);
     set((s) => ({ transactions: s.transactions.filter((x) => x.id !== id) }));
+    // Optimistic card bill rollback
+    if (prev?.creditCardId && prev.type === 'expense') {
+      set((s) => ({
+        creditCards: s.creditCards.map((c) =>
+          c.id === prev.creditCardId ? { ...c, currentBill: Math.max(0, c.currentBill - prev.amount) } : c
+        ),
+      }));
+    }
     txDB.delete(id).then((res: any) => {
-      if (res?.error && prev) set((s) => ({ transactions: [prev, ...s.transactions], saveError: `Erro ao excluir transação: ${res.error.message}` }));
+      if (res?.error && prev) {
+        set((s) => ({ transactions: [prev, ...s.transactions], saveError: `Erro ao excluir transação: ${res.error.message}` }));
+        if (prev.creditCardId && prev.type === 'expense') {
+          set((s) => ({
+            creditCards: s.creditCards.map((c) =>
+              c.id === prev.creditCardId ? { ...c, currentBill: c.currentBill + prev.amount } : c
+            ),
+          }));
+        }
+      } else {
+        if (prev?.creditCardId && prev.type === 'expense') creditCardDB.adjustBill(prev.creditCardId, -prev.amount);
+        get().fetchMetrics();
+      }
     });
   },
 
@@ -255,6 +343,7 @@ export const useStore = create<AppState>()((set, get) => ({
     set((s) => ({ fixedExpenses: [...s.fixedExpenses, f] }));
     fxDB.insert(f).then((res: any) => {
       if (res?.error) set((s) => ({ fixedExpenses: s.fixedExpenses.filter((x) => x.id !== f.id), saveError: `Erro ao salvar gasto fixo: ${res.error.message}` }));
+      else get().fetchMetrics();
     });
   },
   updateFixedExpense: (f) => {
@@ -262,6 +351,7 @@ export const useStore = create<AppState>()((set, get) => ({
     set((s) => ({ fixedExpenses: s.fixedExpenses.map((x) => (x.id === f.id ? f : x)) }));
     fxDB.update(f).then((res: any) => {
       if (res?.error && prev) set((s) => ({ fixedExpenses: s.fixedExpenses.map((x) => (x.id === f.id ? prev : x)), saveError: `Erro ao atualizar gasto fixo: ${res.error.message}` }));
+      else get().fetchMetrics();
     });
   },
   deleteFixedExpense: (id) => {
@@ -269,6 +359,7 @@ export const useStore = create<AppState>()((set, get) => ({
     set((s) => ({ fixedExpenses: s.fixedExpenses.filter((x) => x.id !== id) }));
     fxDB.delete(id).then((res: any) => {
       if (res?.error && prev) set((s) => ({ fixedExpenses: [...s.fixedExpenses, prev], saveError: `Erro ao excluir gasto fixo: ${res.error.message}` }));
+      else get().fetchMetrics();
     });
   },
   toggleFixedExpense: (id) => {
@@ -279,6 +370,7 @@ export const useStore = create<AppState>()((set, get) => ({
     const item = updated.find((x) => x.id === id);
     if (item) fxDB.update(item).then((res: any) => {
       if (res?.error) set({ saveError: `Erro ao atualizar gasto fixo: ${res.error.message}` });
+      else get().fetchMetrics();
     });
   },
 
@@ -363,6 +455,7 @@ export const useStore = create<AppState>()((set, get) => ({
     set((s) => ({ transactions: [t, ...s.transactions] }));
     txDB.insert(t).then((res: any) => {
       if (res?.error) set((s) => ({ transactions: s.transactions.filter((x) => x.id !== t.id), saveError: `Erro ao salvar transação do cofrinho: ${res.error.message}` }));
+      else get().fetchMetrics();
     });
   },
 
