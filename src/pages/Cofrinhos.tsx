@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import { Plus, Trash2, PlusCircle, MinusCircle, Pencil } from 'lucide-react';
 import { useStore } from '../store/useStore';
 import { formatCurrency, generateId } from '../utils/format';
+import { CurrencyInput, parseCurrency } from '../components/CurrencyInput';
 import type { SavingsJar, YieldPeriod } from '../types';
 
 const EMOJIS = ['✈️', '🛡️', '🏡', '🚗', '💍', '🎓', '💻', '📱', '🎉', '🌊', '🐾', '🏥', '🎸', '🍕', '🌍'];
@@ -45,7 +46,7 @@ function yieldLabel(rate: number, period: string): string {
 
 const emptyForm = (): Partial<SavingsJar> => ({
   name: '', emoji: '🎯', targetValue: 0, currentValue: 0, color: '#7c3aed',
-  monthlyContribution: 0, description: '', yieldRate: undefined, yieldPeriod: 'mensal',
+  monthlyContribution: 0, description: '', yieldRate: undefined, yieldPeriod: 'cdi',
 });
 
 function JarCard({ jar, onEdit }: { jar: SavingsJar; onEdit: (jar: SavingsJar) => void }) {
@@ -59,7 +60,7 @@ function JarCard({ jar, onEdit }: { jar: SavingsJar; onEdit: (jar: SavingsJar) =
 
   // Yield-aware months to target
   const monthlyRate = jar.yieldRate && jar.yieldRate > 0
-    ? toMonthlyRate(jar.yieldRate, jar.yieldPeriod ?? 'mensal')
+    ? toMonthlyRate(jar.yieldRate, jar.yieldPeriod ?? 'cdi')
     : 0;
   const monthsLeft = jar.monthlyContribution > 0 || monthlyRate > 0
     ? monthsToTarget(jar.currentValue, jar.targetValue, jar.monthlyContribution, monthlyRate)
@@ -89,7 +90,7 @@ function JarCard({ jar, onEdit }: { jar: SavingsJar; onEdit: (jar: SavingsJar) =
   const deficit = hasMonthlyGoal ? jar.monthlyContribution - actualThisMonth : 0;
 
   const handleTransaction = () => {
-    const val = parseFloat(amount);
+    const val = parseCurrency(amount);
     if (!val || val <= 0) return;
     contributeToJar(jar.id, isAdding ? val : -val);
     setAmount('');
@@ -155,7 +156,7 @@ function JarCard({ jar, onEdit }: { jar: SavingsJar; onEdit: (jar: SavingsJar) =
           <div className="col-span-2 rounded-xl p-3" style={{ background: `${jar.color}12`, border: `1px solid ${jar.color}30` }}>
             <p className="text-[10px] uppercase tracking-wide mb-0.5" style={{ color: jar.color }}>Rendimento</p>
             <p className="text-sm font-semibold" style={{ color: jar.color }}>
-              {yieldLabel(jar.yieldRate, jar.yieldPeriod ?? 'mensal')}
+              {yieldLabel(jar.yieldRate, jar.yieldPeriod ?? 'cdi')}
             </p>
           </div>
         )}
@@ -257,12 +258,11 @@ function JarCard({ jar, onEdit }: { jar: SavingsJar; onEdit: (jar: SavingsJar) =
         </div>
       ) : (
         <div className="flex gap-2">
-          <input
-            type="number"
+          <CurrencyInput
             className="input-field flex-1 text-sm"
-            placeholder="Valor R$"
-            value={amount}
-            onChange={(e) => setAmount(e.target.value)}
+            placeholder="R$ 0,00"
+            value={parseCurrency(amount)}
+            onChange={(v) => setAmount(String(v))}
             autoFocus
             onKeyDown={(e) => e.key === 'Enter' && handleTransaction()}
           />
@@ -293,7 +293,7 @@ export default function Cofrinhos() {
       monthlyContribution: jar.monthlyContribution,
       description: jar.description,
       yieldRate: jar.yieldRate,
-      yieldPeriod: jar.yieldPeriod ?? 'mensal',
+      yieldPeriod: jar.yieldPeriod ?? 'cdi',
     });
     setShowModal(true);
   };
@@ -444,22 +444,25 @@ export default function Cofrinhos() {
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="form-label">Meta (R$)</label>
-                  <input type="number" className="input-field" placeholder="0,00" value={form.targetValue || ''}
-                    onChange={(e) => setForm({ ...form, targetValue: parseFloat(e.target.value) || 0 })} />
+                  <CurrencyInput className="input-field" placeholder="R$ 0,00"
+                    value={form.targetValue ?? 0}
+                    onChange={(v) => setForm({ ...form, targetValue: v })} />
                 </div>
                 {!editingJar && (
                   <div>
                     <label className="form-label">Valor Atual (R$)</label>
-                    <input type="number" className="input-field" placeholder="0,00" value={form.currentValue || ''}
-                      onChange={(e) => setForm({ ...form, currentValue: parseFloat(e.target.value) || 0 })} />
+                    <CurrencyInput className="input-field" placeholder="R$ 0,00"
+                      value={form.currentValue ?? 0}
+                      onChange={(v) => setForm({ ...form, currentValue: v })} />
                   </div>
                 )}
               </div>
 
               <div>
                 <label className="form-label">Aporte Mensal (R$)</label>
-                <input type="number" className="input-field" placeholder="Ex: 500,00" value={form.monthlyContribution || ''}
-                  onChange={(e) => setForm({ ...form, monthlyContribution: parseFloat(e.target.value) || 0 })} />
+                <CurrencyInput className="input-field" placeholder="R$ 0,00"
+                  value={form.monthlyContribution ?? 0}
+                  onChange={(v) => setForm({ ...form, monthlyContribution: v })} />
                 <p className="text-[10px] text-gray-400 mt-1">Meta de quanto você quer aportar por mês neste cofrinho</p>
               </div>
 
@@ -485,7 +488,7 @@ export default function Cofrinhos() {
                 </div>
               </div>
               {form.yieldRate && form.yieldRate > 0 && (() => {
-                const r = toMonthlyRate(form.yieldRate, form.yieldPeriod ?? 'anual');
+                const r = toMonthlyRate(form.yieldRate, form.yieldPeriod ?? 'cdi');
                 const anual = (Math.pow(1 + r, 12) - 1) * 100;
                 return (
                   <p className="text-[11px] text-purple-600 bg-purple-50 rounded-lg px-3 py-2">
